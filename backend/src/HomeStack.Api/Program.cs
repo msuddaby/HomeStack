@@ -1,5 +1,6 @@
 using HomeStack.Core;
 using HomeStack.Modules.Inventory;
+using HomeStack.Modules.Meals;
 using HomeStack.Modules.Shopping;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
@@ -11,6 +12,7 @@ IModule[] modules =
 [
     new InventoryModule(),
     new ShoppingModule(),
+    new MealsModule(),
 ];
 
 builder.Services.AddHomeStack(builder.Configuration, modules);

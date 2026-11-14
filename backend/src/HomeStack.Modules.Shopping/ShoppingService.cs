@@ -67,7 +67,7 @@ public class ShoppingService(HomeStackDbContext db, ICurrentUser me, InventorySe
         var item = new ShoppingItem
         {
             HouseholdId = Hid, Name = name, ProductId = product?.Id,
-            Category = product?.Category ?? req.Category ?? "other",
+            Category = product?.Category ?? req.Category ?? Categories.Guess(name),
             Quantity = req.Quantity, Unit = Blank(req.Unit) ?? product?.DefaultUnit, Note = Blank(req.Note),
             Source = ShoppingSource.Manual, AddedByUserId = me.UserId,
         };

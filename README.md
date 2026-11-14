@@ -4,6 +4,7 @@ A self-hosted, phone-first household app made of modules:
 
 - **Inventory**: what food you have, where it is, and what needs eating or freezing.
 - **Shopping**: a shared list that fills itself from low stock; "Put away" moves bought items into inventory.
+- **Meals**: recipes (import from a link), "what can I make?", and a weekly plan; cooking deducts ingredients.
  See [docs/PLAN.md](docs/PLAN.md) for the roadmap.
 
 - **Backend:** C# / ASP.NET Core (.NET 10), EF Core + SQLite (`backend/`)

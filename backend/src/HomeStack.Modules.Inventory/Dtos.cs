@@ -81,6 +81,7 @@ public record ConsumeRequest(
 public record MoveRequest(int LocationId, bool AdjustExpiry = true);
 
 public record LongFrozenDto(ItemDto Item, int DaysFrozen, int FreezerDays);
+public record StockDto(int ProductId, double Quantity, DateOnly? SoonestExpiry);
 public record LowStockDto(ProductDto Product, double Quantity);
 public record LocationCountDto(int LocationId, string Name, LocationKind Kind, int Items);
 

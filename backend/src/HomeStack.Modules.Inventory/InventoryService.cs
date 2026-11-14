@@ -277,6 +277,27 @@ public class InventoryService(HomeStackDbContext db, ICurrentUser me, TimeProvid
             .OrderBy(x => x.Product.Name).ToList();
     }
 
+    /// <summary>On-hand totals per product, with the soonest non-freezer expiry. Used by recipe availability.</summary>
+    public async Task<List<StockDto>> GetStockAsync()
+    {
+        var rows = await db.Set<InventoryItem>().Where(i => i.HouseholdId == Hid)
+            .Select(i => new { i.ProductId, i.Quantity, i.ExpiresAt, Kind = i.Location!.Kind }).ToListAsync();
+        return rows.GroupBy(r => r.ProductId).Select(g => new StockDto(g.Key, g.Sum(r => r.Quantity),
+            g.Where(r => r.Kind != LocationKind.Freezer && r.ExpiresAt != null).Select(r => r.ExpiresAt).Min())).ToList();
+    }
+
+    public async Task<List<ProductDto>> GetAllProductsAsync() =>
+        (await Products.OrderBy(p => p.Name).ToListAsync()).Select(p => p.ToDto()).ToList();
+
+    /// <summary>Items of the given products, soonest-expiring first (freezer last).</summary>
+    public async Task<List<ItemDto>> GetItemsForProductsAsync(IReadOnlyCollection<int> productIds)
+    {
+        if (productIds.Count == 0) return [];
+        var items = await Items.Where(i => productIds.Contains(i.ProductId)).ToListAsync();
+        return items.OrderBy(i => i.Location!.Kind == LocationKind.Freezer).ThenBy(i => i.ExpiresAt ?? DateOnly.MaxValue)
+            .Select(i => i.ToDto()).ToList();
+    }
+
     public async Task<ProductDto> GetProductAsync(int id) =>
         (await Products.SingleOrDefaultAsync(p => p.Id == id) ?? throw new NotFoundException("Product not found")).ToDto();
 

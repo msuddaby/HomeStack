@@ -1,5 +1,6 @@
 import type { WebModule } from "@/core/modules";
 import { inventoryModule } from "./inventory";
+import { mealsModule } from "./meals";
 import { shoppingModule } from "./shopping";
 
 /**
@@ -7,4 +8,4 @@ import { shoppingModule } from "./shopping";
  * A module may import another module's public `api.ts` (e.g. shopping uses inventory products),
  * mirroring how backend modules depend on each other's services.
  */
-export const modules: WebModule[] = [inventoryModule, shoppingModule];
+export const modules: WebModule[] = [inventoryModule, shoppingModule, mealsModule];

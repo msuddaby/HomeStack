@@ -61,10 +61,14 @@ Modules may read each other through service functions (e.g. meal planning reads 
   dismissable auto items, product editor (minimums, shelf-life overrides), add-to-list from inventory
 - Later: per-store aisle order, realtime push (SignalR) instead of polling, price tracking
 
-### Phase 3: Recipes + Meal planning
+### Phase 3: Recipes + Meal planning ✅ (built 2026-11-14)
 - Recipes (ingredients linked to products, steps, servings, tags); import from a URL using schema.org Recipe metadata
 - "What can I make?" ranks recipes by how many ingredients you have, weighted toward ingredients that expire soon
 - Weekly meal plan; cooking a planned meal deducts its ingredients from inventory; missing ingredients go to the shopping list
+- Built as one `meals` module (Plan · Recipes · What can I make?). Ingredient lines are parsed (fractions, units,
+  package sizes, notes); names auto-link to products conservatively and links can be fixed per ingredient; salt/pepper/water
+  are staples. Cooking converts within mass/volume/count units. URL import reads schema.org JSON-LD and only fetches public hosts.
+- Later: pantry staples list per household, "have enough" quantity checks, nutrition, recipe photos upload
 
 ### Phase 4: AI (pluggable provider: Claude / Ollama)
 - **Receipt scan**: photo → vision model → reviewable list of items → add all. Store abbreviations like "GV WHL MLK" really need an LLM; plain OCR can't handle them.

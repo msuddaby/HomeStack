@@ -51,4 +51,31 @@ public static class Categories
     }
 
     public static bool IsFreezable(Product p) => ShelfLifeDays(p, LocationKind.Freezer) is not null;
+
+    // Ordered most-specific first. Mirrors the frontend's guessCategory.
+    private static readonly (string Category, System.Text.RegularExpressions.Regex Pattern)[] Guesses =
+        new (string, string)[]
+        {
+            ("cheese", @"chees|cheddar|mozzarella|parmesan|brie|feta|gouda|ricotta"),
+            ("eggs", @"\beggs?\b"),
+            ("ground-meat", @"ground|mince"),
+            ("poultry", @"chicken|turkey|duck|wings?\b|drumstick"),
+            ("seafood", @"salmon|fish|shrimp|prawn|\bcod\b|tilapia|scallop|crab|lobster"),
+            ("deli", @"\bham\b|bacon|salami|sausage|deli|pepperoni|prosciutto|hot ?dog"),
+            ("meat", @"beef|steak|pork|lamb|ribs?\b|chops?\b|roast|veal|brisket"),
+            ("leftovers", @"leftover"),
+            ("frozen", @"frozen|ice cream|pizza|popsicle"),
+            ("dairy", @"milk|yog(h)?urt|cream|butter|kefir"),
+            ("bakery", @"bread|bagel|buns?\b|tortilla|muffin|croissant|pita|naan|rolls?\b"),
+            ("canned", @"\bcan(ned)?\b|soup|broth|stock\b"),
+            ("condiments", @"ketchup|mustard|mayo|sauce|dressing|\bjam\b|salsa|relish|syrup|honey|vinegar|\boil\b"),
+            ("beverages", @"juice|soda|water|coffee|\btea\b|beer|wine|kombucha"),
+            ("snacks", @"chips|cookie|cracker|chocolate|snack|candy|popcorn|pretzel"),
+            ("fruit", @"apple|banana|berr|grape|orange|lemon|lime|melon|peach|pear|plum|mango|pineapple|kiwi|cherr|avocado|fruit"),
+            ("vegetables", @"lettuce|spinach|carrot|broccoli|onion|pepper|tomato|potato|cucumber|celery|kale|mushroom|zucchini|cabbage|garlic|corn|\bpeas?\b|veg|salad|herb|cilantro|parsley|basil|ginger|scallion"),
+            ("dry-goods", @"rice|pasta|spaghetti|noodle|flour|\boats?\b|cereal|sugar|lentil|quinoa|couscous|baking|beans|spice|cumin|paprika|cinnamon|yeast"),
+        }.Select(g => (g.Item1, new System.Text.RegularExpressions.Regex(g.Item2, System.Text.RegularExpressions.RegexOptions.IgnoreCase))).ToArray();
+
+    /// <summary>Best-guess category from a free-text name, or "other".</summary>
+    public static string Guess(string name) => Guesses.FirstOrDefault(g => g.Pattern.IsMatch(name)).Category ?? "other";
 }
