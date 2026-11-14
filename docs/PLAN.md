@@ -54,9 +54,12 @@ Modules may read each other through service functions (e.g. meal planning reads 
 - **Dashboard**: expired, expiring soon, *freeze it now* (freezable fridge items about to expire), *long in freezer*, low stock
 - Event log (added/used/wasted/frozen) to support waste stats and shopping predictions later
 
-### Phase 2: Shopping list
+### Phase 2: Shopping list ✅ (built 2026-11-14)
 - Manual list, plus auto-add when a product drops below its low-stock threshold
 - Check off at the store → "Put away" adds the checked items to inventory with suggested expiry dates (this becomes the main way groceries get entered)
+- Built: store-section grouping, "2 milk" quantity parsing, optimistic check-off, 5s polling for shared shopping,
+  dismissable auto items, product editor (minimums, shelf-life overrides), add-to-list from inventory
+- Later: per-store aisle order, realtime push (SignalR) instead of polling, price tracking
 
 ### Phase 3: Recipes + Meal planning
 - Recipes (ingredients linked to products, steps, servings, tags); import from a URL using schema.org Recipe metadata

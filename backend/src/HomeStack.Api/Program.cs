@@ -1,5 +1,6 @@
 using HomeStack.Core;
 using HomeStack.Modules.Inventory;
+using HomeStack.Modules.Shopping;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 
@@ -9,6 +10,7 @@ var builder = WebApplication.CreateBuilder(args);
 IModule[] modules =
 [
     new InventoryModule(),
+    new ShoppingModule(),
 ];
 
 builder.Services.AddHomeStack(builder.Configuration, modules);

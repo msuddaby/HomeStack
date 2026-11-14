@@ -247,6 +247,64 @@ namespace HomeStack.Api.Migrations
                     b.ToTable("inventory_products", (string)null);
                 });
 
+            modelBuilder.Entity("HomeStack.Modules.Shopping.ShoppingItem", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("AddedByUserId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Category")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("CheckedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("CheckedByUserId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("DismissedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("HouseholdId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Note")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("ProductId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<double?>("Quantity")
+                        .HasColumnType("REAL");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Unit")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("HouseholdId", "ProductId");
+
+                    b.ToTable("shopping_items", (string)null);
+                });
+
             modelBuilder.Entity("HomeStack.Core.Data.User", b =>
                 {
                     b.HasOne("HomeStack.Core.Data.Household", "Household")

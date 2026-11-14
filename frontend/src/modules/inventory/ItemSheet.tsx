@@ -1,37 +1,44 @@
 import { useEffect, useState } from "react";
-import { Minus, Plus, Snowflake, Trash2, Utensils, Flame, Pencil, PackageOpen } from "lucide-react";
+import { Minus, Plus, Snowflake, Trash2, Utensils, Flame, Pencil, PackageOpen, ShoppingCart, Check, Tags } from "lucide-react";
+import { useAddToList } from "@/modules/shopping/api";
 import { ApiError } from "@/core/api";
 import { shortDate, todayISO } from "@/core/dates";
 import { Button, Chip, ErrorText, Field, Input, Select, Sheet } from "@/core/ui";
 import { useCategories, useConsume, useDeleteItem, useLocations, useMove, useUpdateItem, type Item } from "./api";
 import { formatQty, itemStatus } from "./logic";
+import { ProductSheet } from "./ProductSheet";
 
 export function ItemSheet({ item, onClose }: { item: Item | null; onClose: () => void }) {
   const [editing, setEditing] = useState(false);
+  const [productId, setProductId] = useState<number | null>(null);
   useEffect(() => setEditing(false), [item?.id]);
   return (
-    <Sheet open={!!item} onClose={onClose} title={item?.product.name ?? ""}>
-      {item && (editing
-        ? <EditForm item={item} onDone={() => setEditing(false)} />
-        : <Actions item={item} onClose={onClose} onEdit={() => setEditing(true)} />)}
-    </Sheet>
+    <>
+      <Sheet open={!!item && productId == null} onClose={onClose} title={item?.product.name ?? ""}>
+        {item && (editing
+          ? <EditForm item={item} onDone={() => setEditing(false)} />
+          : <Actions key={item.id} item={item} onClose={onClose} onEdit={() => setEditing(true)} onEditProduct={() => setProductId(item.product.id)} />)}
+      </Sheet>
+      <ProductSheet productId={productId} onClose={() => setProductId(null)} />
+    </>
   );
 }
 
-function Actions({ item, onClose, onEdit }: { item: Item; onClose: () => void; onEdit: () => void }) {
+function Actions({ item, onClose, onEdit, onEditProduct }: { item: Item; onClose: () => void; onEdit: () => void; onEditProduct: () => void }) {
   const categories = useCategories().data ?? [];
   const locations = useLocations().data ?? [];
   const consume = useConsume();
   const move = useMove();
   const update = useUpdateItem();
   const del = useDeleteItem();
+  const addToList = useAddToList();
   const [amount, setAmount] = useState(1);
   const cat = categories.find((c) => c.id === item.product.category);
   const status = itemStatus(item);
   const inFreezer = item.location.kind === "freezer";
   const freezable = (item.product.freezerDays ?? cat?.freezerDays) != null;
   const step = item.quantity >= 2 ? 1 : item.quantity / 2;
-  const error = consume.error ?? move.error ?? update.error ?? del.error;
+  const error = consume.error ?? move.error ?? update.error ?? del.error ?? addToList.error;
 
   const use = async (quantity: number | undefined, wasted = false) => {
     const remaining = await consume.mutateAsync({ id: item.id, quantity, wasted });
@@ -98,6 +105,13 @@ function Actions({ item, onClose, onEdit }: { item: Item; onClose: () => void; o
         </div>
         {inFreezer && <p className="text-xs text-muted">Thawing sets a short use-by date for the fridge.</p>}
       </section>
+
+      <div className="grid grid-cols-2 gap-2">
+        <Button busy={addToList.isPending} disabled={addToList.isSuccess} onClick={() => addToList.mutate({ productId: item.product.id })}>
+          {addToList.isSuccess ? <><Check className="size-4" />On the list</> : <><ShoppingCart className="size-4" />Add to list</>}
+        </Button>
+        <Button variant="ghost" onClick={onEditProduct}><Tags className="size-4" />Product settings</Button>
+      </div>
 
       <ErrorText error={error} />
       <button className="flex items-center gap-1 self-center text-xs text-muted hover:text-danger" onClick={async () => { await del.mutateAsync(item.id); onClose(); }}>

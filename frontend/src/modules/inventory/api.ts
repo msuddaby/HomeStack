@@ -49,20 +49,34 @@ export function useItems(filter: { locationId?: number; q?: string }) {
   if (filter.q) p.set("q", filter.q);
   return useQuery({ queryKey: [...KEY, "items", filter], queryFn: () => api<Item[]>(`/inventory/items?${p}`), placeholderData: (prev) => prev });
 }
-export function useProductSearch(q: string) {
+const searchProducts = (q: string, limit: number) =>
+  api<Product[]>(`/inventory/products?q=${encodeURIComponent(q.trim())}&limit=${limit}`);
+/** All products (optionally filtered), for the products page. */
+export const useProducts = (q: string) =>
+  useQuery({ queryKey: [...KEY, "products", "all", q], queryFn: () => searchProducts(q, 100), placeholderData: (prev) => prev });
+/** Autocomplete: only runs once something is typed. */
+export function useProductSearch(q: string, limit = 8) {
   return useQuery({
-    queryKey: [...KEY, "products", q],
-    queryFn: () => api<Product[]>(`/inventory/products?q=${encodeURIComponent(q)}&limit=8`),
+    queryKey: [...KEY, "products", q, limit],
+    queryFn: () => searchProducts(q, limit),
     enabled: q.trim().length > 0,
     placeholderData: (prev) => prev,
   });
 }
+export const useProduct = (id: number | null) =>
+  useQuery({ queryKey: [...KEY, "product", id], queryFn: () => api<Product>(`/inventory/products/${id}`), enabled: id != null });
+export const useSaveProduct = () =>
+  useInventoryMutation(({ id, ...v }: NewProduct & { id: number }) => api<Product>(`/inventory/products/${id}`, { method: "PUT", body: v }));
+
 export const lookupBarcode = (code: string) => api<BarcodeLookup>(`/inventory/barcode/${encodeURIComponent(code)}`);
 
-/** Every inventory mutation refreshes all inventory queries (lists, dashboard, counts). */
+/** Every inventory mutation refreshes all inventory queries (lists, dashboard, counts) and the shopping list. */
 function useInventoryMutation<TVars, TResult>(fn: (v: TVars) => Promise<TResult>) {
   const qc = useQueryClient();
-  return useMutation({ mutationFn: fn, onSuccess: () => qc.invalidateQueries({ queryKey: KEY }) });
+  return useMutation({
+    mutationFn: fn,
+    onSuccess: () => Promise.all([qc.invalidateQueries({ queryKey: KEY }), qc.invalidateQueries({ queryKey: ["shopping"] })]),
+  });
 }
 
 export const useAddItem = () => useInventoryMutation((v: AddItem) => api<Item>("/inventory/items", { body: v }));

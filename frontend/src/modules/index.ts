@@ -1,5 +1,10 @@
 import type { WebModule } from "@/core/modules";
 import { inventoryModule } from "./inventory";
+import { shoppingModule } from "./shopping";
 
-/** Register front-end modules here (order = nav order). */
-export const modules: WebModule[] = [inventoryModule];
+/**
+ * Register front-end modules here (order = nav order).
+ * A module may import another module's public `api.ts` (e.g. shopping uses inventory products),
+ * mirroring how backend modules depend on each other's services.
+ */
+export const modules: WebModule[] = [inventoryModule, shoppingModule];

@@ -255,16 +255,36 @@ public class InventoryService(HomeStackDbContext db, ICurrentUser me, TimeProvid
             .Select(x => new LongFrozenDto(x.Item.ToDto(), x.DaysFrozen, x.FreezerDays!.Value))
             .ToList();
 
-        var onHand = items.GroupBy(i => i.ProductId).ToDictionary(g => g.Key, g => g.Sum(i => i.Quantity));
-        var tracked = await Products.Where(p => p.MinQuantity != null).ToListAsync();
-        var lowStock = tracked
-            .Select(p => new LowStockDto(p.ToDto(), onHand.GetValueOrDefault(p.Id)))
-            .Where(x => x.Quantity < x.Product.MinQuantity)
-            .OrderBy(x => x.Product.Name).ToList();
+        var lowStock = await GetLowStockAsync();
 
         var counts = locations.Select(l => new LocationCountDto(l.Id, l.Name, l.Kind, items.Count(i => i.LocationId == l.Id))).ToList();
 
         return new InventoryDashboardDto(BySoonest(expired), BySoonest(expiringSoon), BySoonest(freezeSoon), longInFreezer, lowStock, counts);
+    }
+
+    /// <summary>Products with a minimum quantity whose total on hand is below it.</summary>
+    public async Task<List<LowStockDto>> GetLowStockAsync()
+    {
+        var tracked = await Products.Where(p => p.MinQuantity != null).ToListAsync();
+        if (tracked.Count == 0) return [];
+        var ids = tracked.Select(p => p.Id).ToList();
+        var onHand = (await db.Set<InventoryItem>().Where(i => i.HouseholdId == Hid && ids.Contains(i.ProductId))
+                .Select(i => new { i.ProductId, i.Quantity }).ToListAsync())
+            .GroupBy(x => x.ProductId).ToDictionary(g => g.Key, g => g.Sum(x => x.Quantity));
+        return tracked
+            .Select(p => new LowStockDto(p.ToDto(), onHand.GetValueOrDefault(p.Id)))
+            .Where(x => x.Quantity < x.Product.MinQuantity)
+            .OrderBy(x => x.Product.Name).ToList();
+    }
+
+    public async Task<ProductDto> GetProductAsync(int id) =>
+        (await Products.SingleOrDefaultAsync(p => p.Id == id) ?? throw new NotFoundException("Product not found")).ToDto();
+
+    /// <summary>Find a product by exact name (case-insensitive), for linking free-text entries.</summary>
+    public async Task<ProductDto?> FindByNameAsync(string name)
+    {
+        var n = name.Trim().ToLower();
+        return (await Products.FirstOrDefaultAsync(p => p.Name.ToLower() == n))?.ToDto();
     }
 
     // ---------- helpers ----------

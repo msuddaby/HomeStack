@@ -1,12 +1,14 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { Link } from "react-router";
-import { AlertTriangle, Clock, Plus, Snowflake, ShoppingBasket, Sparkles, Archive } from "lucide-react";
+import { AlertTriangle, Clock, Plus, Snowflake, ShoppingBasket, Sparkles, Archive, ShoppingCart, Check } from "lucide-react";
+import { useAddToList } from "@/modules/shopping/api";
 import { duration } from "@/core/dates";
 import { Button, Card, Chip, ErrorText, Spinner } from "@/core/ui";
 import { useCategories, useDashboard, useMove, type Item, type LocationKind } from "./api";
 import { ItemRow } from "./ItemRow";
 import { ItemSheet } from "./ItemSheet";
 import { formatQty } from "./logic";
+import { ProductSheet } from "./ProductSheet";
 
 const KIND_ICON: Record<LocationKind, string> = { pantry: "🥫", fridge: "🧊", freezer: "❄️", other: "📦" };
 
@@ -15,7 +17,10 @@ export function InventoryDashboardWidget() {
   const categories = useCategories().data ?? [];
   const catById = useMemo(() => new Map(categories.map((c) => [c.id, c])), [categories]);
   const move = useMove();
+  const addToList = useAddToList();
+  const [listed, setListed] = useState<Set<number>>(new Set());
   const [selected, setSelected] = useState<Item | null>(null);
+  const [productId, setProductId] = useState<number | null>(null);
 
   if (dash.isPending) return <Spinner />;
   if (dash.error) return <ErrorText error={dash.error} />;
@@ -58,7 +63,14 @@ export function InventoryDashboardWidget() {
 
       {d.expired.length > 0 && (
         <Card title={<Title icon={<AlertTriangle className="size-4 text-danger" />} text="Expired" count={d.expired.length} />}>
-          <ul className="divide-y divide-border">{d.expired.map((i) => row(i))}</ul>
+          <ul className="divide-y divide-border">
+            {d.expired.map((i) => row(i, (
+              <Button className="shrink-0 px-3" aria-label={`Add ${i.product.name} to shopping list`} disabled={listed.has(i.product.id)}
+                onClick={() => addToList.mutate({ productId: i.product.id }, { onSuccess: () => setListed((s) => new Set(s).add(i.product.id)) })}>
+                {listed.has(i.product.id) ? <Check className="size-4" /> : <ShoppingCart className="size-4" />}
+              </Button>
+            )))}
+          </ul>
         </Card>
       )}
 
@@ -79,12 +91,15 @@ export function InventoryDashboardWidget() {
       )}
 
       {d.lowStock.length > 0 && (
-        <Card title={<Title icon={<ShoppingBasket className="size-4 text-accent" />} text="Running low" count={d.lowStock.length} />}>
+        <Card title={<Title icon={<ShoppingBasket className="size-4 text-accent" />} text="Running low" count={d.lowStock.length} />}
+          action={<Link to="/shopping" className="text-xs text-accent">On your shopping list →</Link>}>
           <ul className="divide-y divide-border text-sm">
             {d.lowStock.map((x) => (
-              <li key={x.product.id} className="flex items-center justify-between py-2">
-                <span>{catById.get(x.product.category)?.emoji} {x.product.name}</span>
-                <span className="text-muted">{formatQty(x.quantity, x.product.defaultUnit) || "0"} / {x.product.minQuantity}</span>
+              <li key={x.product.id}>
+                <button onClick={() => setProductId(x.product.id)} className="flex w-full items-center justify-between py-2 text-left">
+                  <span>{catById.get(x.product.category)?.emoji} {x.product.name}</span>
+                  <span className="text-muted">{formatQty(x.quantity, x.product.defaultUnit) || "0"} of {x.product.minQuantity}</span>
+                </button>
               </li>
             ))}
           </ul>
@@ -92,6 +107,7 @@ export function InventoryDashboardWidget() {
       )}
 
       <ItemSheet item={selected} onClose={() => setSelected(null)} />
+      <ProductSheet productId={productId} onClose={() => setProductId(null)} />
     </>
   );
 }

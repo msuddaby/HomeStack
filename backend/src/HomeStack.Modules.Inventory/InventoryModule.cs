@@ -79,6 +79,7 @@ public class InventoryModule : IModule
 
         // Products
         g.MapGet("/products", (string? q, int? limit, InventoryService s) => s.SearchProductsAsync(q, limit ?? 20));
+        g.MapGet("/products/{id:int}", (int id, InventoryService s) => s.GetProductAsync(id));
         g.MapPost("/products", (ProductRequest req, InventoryService s) => s.CreateProductAsync(req)).Validate<ProductRequest>();
         g.MapPut("/products/{id:int}", (int id, ProductRequest req, InventoryService s) => s.UpdateProductAsync(id, req)).Validate<ProductRequest>();
         g.MapGet("/barcode/{code}", async (string code, InventoryService s, OpenFoodFactsClient off, CancellationToken ct) =>

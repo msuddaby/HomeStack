@@ -1,7 +1,10 @@
 # HomeStack
 
-A self-hosted, phone-first household app made of modules. The first module is **Inventory**: what food you
-have, where it is, and what needs eating or freezing. See [docs/PLAN.md](docs/PLAN.md) for the roadmap.
+A self-hosted, phone-first household app made of modules:
+
+- **Inventory**: what food you have, where it is, and what needs eating or freezing.
+- **Shopping**: a shared list that fills itself from low stock; "Put away" moves bought items into inventory.
+ See [docs/PLAN.md](docs/PLAN.md) for the roadmap.
 
 - **Backend:** C# / ASP.NET Core (.NET 10), EF Core + SQLite (`backend/`)
 - **Frontend:** React + TypeScript + Vite PWA (`frontend/`)

@@ -1,6 +1,6 @@
 import { useDeferredValue, useMemo, useState } from "react";
-import { useSearchParams } from "react-router";
-import { Plus, Search, Refrigerator } from "lucide-react";
+import { Link, useSearchParams } from "react-router";
+import { Plus, Search, Refrigerator, Tags } from "lucide-react";
 import { PageHeader } from "@/core/layout";
 import { Button, cx, Empty, Input, Spinner } from "@/core/ui";
 import { useCategories, useDashboard, useItems, useLocations, type Item } from "./api";
@@ -28,7 +28,12 @@ export function InventoryPage() {
 
   return (
     <>
-      <PageHeader title="Inventory" action={<Button variant="primary" className="hidden md:inline-flex" onClick={() => setParam("add", "1")}><Plus className="size-4" />Add</Button>} />
+      <PageHeader title="Inventory" action={
+        <div className="flex gap-2">
+          <Link to="/inventory/products"><Button variant="ghost"><Tags className="size-4" />Products</Button></Link>
+          <Button variant="primary" className="hidden md:inline-flex" onClick={() => setParam("add", "1")}><Plus className="size-4" />Add</Button>
+        </div>
+      } />
 
       <div className="-mx-4 mb-3 flex gap-2 overflow-x-auto px-4 pb-1">
         <Tab active={!locationId} onClick={() => setParam("loc", null)} label="All" count={total} />

@@ -3,6 +3,7 @@
   <ItemGroup>
     <ProjectReference Include="..\HomeStack.Core\HomeStack.Core.csproj" />
     <ProjectReference Include="..\HomeStack.Modules.Inventory\HomeStack.Modules.Inventory.csproj" />
+    <ProjectReference Include="..\HomeStack.Modules.Shopping\HomeStack.Modules.Shopping.csproj" />
   </ItemGroup>
 
   <ItemGroup>
