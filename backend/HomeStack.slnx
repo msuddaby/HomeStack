@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/HomeStack.Api/HomeStack.Api.csproj" />
+    <Project Path="src/HomeStack.Core/HomeStack.Core.csproj" />
+    <Project Path="src/HomeStack.Modules.Inventory/HomeStack.Modules.Inventory.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/HomeStack.Tests/HomeStack.Tests.csproj" />
+  </Folder>
+</Solution>

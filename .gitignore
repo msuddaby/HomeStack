@@ -1,0 +1,12 @@
+# .NET
+bin/
+obj/
+*.user
+# Node
+node_modules/
+frontend/dist/
+frontend/dev-dist/
+# Data
+data/
+.env
+*.log

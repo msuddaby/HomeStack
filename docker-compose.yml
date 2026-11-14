@@ -1,0 +1,11 @@
+services:
+  homestack:
+    build: .
+    image: homestack:latest
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      TZ: ${TZ:-UTC}        # your time zone, e.g. America/Toronto; "today" and expiry dates use it
+    volumes:
+      - ./data:/data        # SQLite database lives here; back this folder up
