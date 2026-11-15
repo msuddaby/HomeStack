@@ -1,11 +1,12 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router";
-import { CheckCircle2, ChefHat, ChevronLeft, ChevronRight, Pencil, Plus, ShoppingCart, Trash2, BookOpen } from "lucide-react";
+import { CheckCircle2, ChefHat, ChevronLeft, ChevronRight, Pencil, Plus, ShoppingCart, Sparkles, Trash2, BookOpen } from "lucide-react";
 import { addDays, parseISO, todayISO, toISO } from "@/core/dates";
 import { Button, Chip, cx, ErrorText, Sheet } from "@/core/ui";
 import { useDeletePlan, usePlan, usePlanToList, type PlanEntry } from "./api";
 import { AddMealSheet } from "./AddMealSheet";
 import { CookSheet } from "./CookSheet";
+import { WeekIdeasSheet } from "./Ideas";
 import { SLOT_LABEL } from "./format";
 
 function weekStart(iso: string) {
@@ -22,6 +23,7 @@ export function PlanPage() {
   const toList = usePlanToList();
   const [adding, setAdding] = useState<string | null>(null);
   const [selected, setSelected] = useState<PlanEntry | null>(null);
+  const [planning, setPlanning] = useState(false);
 
   const days = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(start, i)), [start]);
   const byDay = useMemo(() => {
@@ -39,6 +41,8 @@ export function PlanPage() {
         <button className="text-sm font-semibold" onClick={() => setStart(weekStart(today))}>{start === weekStart(today) ? "This week" : label}</button>
         <Button variant="ghost" className="px-2" onClick={() => setStart(addDays(start, 7))} aria-label="Next week"><ChevronRight className="size-5" /></Button>
       </div>
+
+      <Button className="mb-3 w-full" onClick={() => setPlanning(true)}><Sparkles className="size-4 text-accent" />Plan my week</Button>
 
       {missing > 0 && (
         <div className="mb-3 flex items-center justify-between gap-2 rounded-2xl bg-warn-soft px-3 py-2 text-sm text-warn">
@@ -84,6 +88,7 @@ export function PlanPage() {
 
       <AddMealSheet open={adding != null} date={adding ?? undefined} onClose={() => setAdding(null)} />
       <EntrySheet entry={selected} onClose={() => setSelected(null)} />
+      <WeekIdeasSheet open={planning} onClose={() => setPlanning(false)} />
     </>
   );
 }

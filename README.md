@@ -29,7 +29,8 @@ under **Settings → Household members**. The container restarts on its own afte
   (free app; use ntfy.sh or your own server) listing what to freeze, what's expiring and what's on the menu.
 - **AI (optional):** **Settings → AI** connects any provider: DeepSeek (default, `deepseek-flash`), Claude, OpenAI,
   a local Ollama (`http://host.docker.internal:11434/v1`), or anything OpenAI-compatible. *Test connection* checks
-  that the model can read photos. Then **Inventory → + → Scan receipt** or **Type a list** reads items for you to review.
+  that the model can read photos. Then **Inventory → + → Scan receipt** or **Type a list** reads items for you to review,
+  and **Meals** gets *Use it up* ideas and *Plan my week*, built around what's expiring.
 - **Update:** `git pull && docker compose up -d --build`.
 
 **Phones and the camera:** browsers only allow camera access (barcode scanning) over HTTPS. The easiest

@@ -76,7 +76,8 @@ Modules may read each other through service functions (e.g. meal planning reads 
 - ✅ Receipt scan + natural-language add (built 2026-11-14): photos (up to 4, shrunk on the phone) or typed text → review list
   (names, category, place, quantity, expiry) → add all in one transaction; known product names are fed to the model and matched
 - Fridge/pantry photo → suggested items to add
-- Meal plan generator that uses what's expiring, plus recipe suggestions
+- ✅ Meal ideas (built 2026-11-14): "Use it up" on What can I make? and "Plan my week" on the plan. Saved recipes first,
+  new ones otherwise; missing/expiring worked out against real stock; nothing saved until accepted (new ones tagged `idea`)
 - An **MCP server** exposing HomeStack, so you can ask Claude "what's about to go off?" from any client
 
 ### Cross-cutting

@@ -80,6 +80,24 @@ public class MealsService(HomeStackDbContext db, ICurrentUser me, TimeProvider t
             .ToList();
     }
 
+    /// <summary>Evaluates unsaved recipes against current stock (what's missing, what expiring food they use) without storing them.</summary>
+    public async Task<List<RecipeSummaryDto>> SummarizeDraftsAsync(IEnumerable<RecipeRequest> drafts)
+    {
+        var pantry = await LoadPantryAsync();
+        var list = new List<RecipeSummaryDto>();
+        foreach (var d in drafts)
+        {
+            var r = new Recipe { HouseholdId = Hid, Title = d.Title };
+            await ApplyAsync(r, d);
+            list.Add(Summarize(r, pantry));
+        }
+        return list;
+    }
+
+    /// <summary>Dates in the range that already have a dinner planned.</summary>
+    public async Task<HashSet<DateOnly>> PlannedDinnerDatesAsync(DateOnly from, DateOnly to) =>
+        (await Plan.Where(e => e.Date >= from && e.Date <= to && e.Slot == MealSlot.Dinner).Select(e => e.Date).ToListAsync()).ToHashSet();
+
     public async Task<RecipeDto> GetRecipeAsync(int id)
     {
         var r = await LoadRecipe(id);

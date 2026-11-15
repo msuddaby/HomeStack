@@ -36,6 +36,12 @@ export interface CookPlan {
   }[];
 }
 
+/** An AI meal idea: a saved recipe (recipeId) or a new one (draft). Missing/expiring are checked against real stock. */
+export interface Idea {
+  recipeId: number | null; title: string; why: string | null; description: string | null; servings: number; totalMinutes: number | null;
+  ingredientCount: number; missing: string[]; usesExpiring: { name: string; expiresAt: string }[]; draft: RecipeInput | null; date: string | null;
+}
+
 const KEY = ["meals"] as const;
 
 export const useRecipes = (q = "", tag = "") =>
@@ -80,3 +86,8 @@ export const useSavePlan = () =>
   useMealsMutation(({ id, ...v }: PlanInput & { id?: number }) =>
     api<PlanEntry>(id ? `/meals/plan/${id}` : "/meals/plan", { method: id ? "PUT" : "POST", body: v }));
 export const useDeletePlan = () => useMealsMutation((id: number) => api(`/meals/plan/${id}`, { method: "DELETE" }));
+
+export const fetchIdeas = (v: { count?: number; wish?: string | null; week?: boolean }) => api<{ ideas: Idea[] }>("/meals/ideas", { body: v });
+export const useAcceptIdea = () =>
+  useMealsMutation((v: { recipeId?: number | null; draft?: RecipeInput | null; date?: string | null; slot?: MealSlot }) =>
+    api<{ recipeId: number; planEntryId: number | null }>("/meals/ideas/accept", { body: v }));

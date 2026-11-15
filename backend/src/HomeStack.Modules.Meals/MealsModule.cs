@@ -19,6 +19,7 @@ public class MealsModule : IModule
     public void AddServices(IServiceCollection services, IConfiguration configuration)
     {
         services.AddScoped<MealsService>();
+        services.AddScoped<MealIdeas>();
         services.AddScoped<HomeStack.Core.Notifications.IDigestSource, MealsDigest>();
         services.AddHttpClient<RecipeImporter>(c =>
             {
@@ -74,6 +75,8 @@ public class MealsModule : IModule
     {
         g.MapGet("/recipes", (string? q, string? tag, MealsService s) => s.ListRecipesAsync(q, tag));
         g.MapGet("/suggestions", (MealsService s) => s.SuggestAsync());
+        g.MapPost("/ideas", (IdeasRequest req, MealIdeas ideas, CancellationToken ct) => ideas.SuggestAsync(req, ct)).Validate<IdeasRequest>();
+        g.MapPost("/ideas/accept", (AcceptIdeaRequest req, MealIdeas ideas) => ideas.AcceptAsync(req)).Validate<AcceptIdeaRequest>();
         g.MapGet("/recipes/{id:int}", (int id, MealsService s) => s.GetRecipeAsync(id));
         g.MapPost("/recipes", (RecipeRequest req, MealsService s) => s.CreateRecipeAsync(req)).Validate<RecipeRequest>();
         g.MapPut("/recipes/{id:int}", (int id, RecipeRequest req, MealsService s) => s.UpdateRecipeAsync(id, req)).Validate<RecipeRequest>();
