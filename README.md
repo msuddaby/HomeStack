@@ -13,11 +13,21 @@ A self-hosted, phone-first household app made of modules:
 ## Run it (Docker)
 
 ```sh
-TZ=America/Toronto docker compose up -d --build
+cp .env.example .env      # set TZ (and your user id if it isn't 1000)
+docker compose up -d --build
 ```
 
 Open `http://<server>:8080`. On first visit you create the household and your account. Add other people
-under **Settings → Household members**. Data lives in `./data/homestack.db`; back up that folder.
+under **Settings → Household members**. The container restarts on its own after reboots and crashes.
+
+- **Data:** `./data` holds the live database and the sign-in keys.
+- **Backups:** every night after 3am the app writes `homestack-YYYY-MM-DD.db` to `./backups`, keeping 14
+  (change with `HOMESTACK_BACKUPS` and `HOMESTACK_BACKUP_KEEP` in `.env`). Point it at another disk or a synced
+  folder for an off-machine copy. **Settings → Backups** shows the last one and has *Back up now*.
+  To restore, stop the container, copy a backup over `data/homestack.db` (deleting `homestack.db-wal`/`-shm`), and start it.
+- **Daily reminder:** **Settings → Daily reminder** sends a morning push via [ntfy](https://ntfy.sh)
+  (free app; use ntfy.sh or your own server) listing what to freeze, what's expiring and what's on the menu.
+- **Update:** `git pull && docker compose up -d --build`.
 
 **Phones and the camera:** browsers only allow camera access (barcode scanning) over HTTPS. The easiest
 way to get HTTPS on a home network is [Tailscale](https://tailscale.com): `tailscale serve --bg 8080`, then
@@ -26,7 +36,7 @@ open the `https://<machine>.<tailnet>.ts.net` URL on your phone and choose *Add 
 ## Develop
 
 ```sh
-# terminal 1: API on http://localhost:5080 (applies migrations, DB in ./data)
+# terminal 1: API on http://localhost:5080 (applies migrations, DB in ./data-dev)
 cd backend && dotnet run --project src/HomeStack.Api
 
 # terminal 2: UI on http://localhost:5173 (proxies /api to 5080)
@@ -36,7 +46,7 @@ cd frontend && npm install && npm run dev
 Tests: `cd backend && dotnet test`. Frontend type-check: `cd frontend && npm run typecheck`.
 
 The local dev database already has a test household: username `dev`, password `devpassword`.
-To start fresh, delete `data/`.
+To start fresh, delete `data-dev/`. Dev and Docker use separate databases.
 
 ### Database changes
 
@@ -56,6 +66,8 @@ Migrations are applied automatically on startup.
    `ICurrentUser.HouseholdId`). Register it in the `modules` array in `src/HomeStack.Api/Program.cs`, then add a migration.
 2. **Frontend:** create `src/modules/<id>/index.ts` exporting a `WebModule` and add it to `src/modules/index.ts`.
    It gets a nav tab, its routes under `/<path>`, and its `DashboardWidget` on Home automatically.
+3. **Daily reminder (optional):** register a scoped `IDigestSource` in `AddServices` returning `DigestSection`s;
+   it runs with the household's `ICurrentUser`, so your normal services work. Empty sections are dropped.
 
-Modules talk to each other through services (e.g. meal planning will inject `InventoryService`), not by
+Modules talk to each other through services (e.g. meal planning injects `InventoryService`), not by
 querying each other's tables.

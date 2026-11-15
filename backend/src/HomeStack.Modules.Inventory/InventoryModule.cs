@@ -17,6 +17,7 @@ public class InventoryModule : IModule
     {
         services.Configure<InventoryOptions>(configuration.GetSection("Inventory"));
         services.AddScoped<InventoryService>();
+        services.AddScoped<HomeStack.Core.Notifications.IDigestSource, InventoryDigest>();
         services.AddHttpClient<OpenFoodFactsClient>(c =>
         {
             c.BaseAddress = new Uri(configuration["Inventory:OpenFoodFactsUrl"] ?? "https://world.openfoodfacts.org/");

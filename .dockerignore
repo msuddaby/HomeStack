@@ -3,4 +3,6 @@
 **/node_modules
 frontend/dist
 data
+data-dev
+backups
 .git

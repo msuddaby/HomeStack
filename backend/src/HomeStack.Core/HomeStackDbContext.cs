@@ -29,6 +29,8 @@ public class HomeStackDbContext(DbContextOptions<HomeStackDbContext> options, IE
             e.HasOne(x => x.Household).WithMany().HasForeignKey(x => x.HouseholdId).OnDelete(DeleteBehavior.Cascade);
         });
 
+        Notifications.NotificationSettings.Configure(mb);
+
         foreach (var module in modules) module.ConfigureModel(mb);
     }
 }

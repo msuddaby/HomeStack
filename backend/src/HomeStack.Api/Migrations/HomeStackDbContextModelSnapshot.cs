@@ -72,6 +72,50 @@ namespace HomeStack.Api.Migrations
                     b.ToTable("users", (string)null);
                 });
 
+            modelBuilder.Entity("HomeStack.Core.Notifications.NotificationSettings", b =>
+                {
+                    b.Property<int>("HouseholdId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("AccessToken")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("AppUrl")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("DigestHour")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("LastError")
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("LastSentAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateOnly?>("LastSentOn")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ServerUrl")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Topic")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("HouseholdId");
+
+                    b.ToTable("notification_settings", (string)null);
+                });
+
             modelBuilder.Entity("HomeStack.Modules.Inventory.InventoryEvent", b =>
                 {
                     b.Property<int>("Id")
@@ -464,6 +508,15 @@ namespace HomeStack.Api.Migrations
                         .IsRequired();
 
                     b.Navigation("Household");
+                });
+
+            modelBuilder.Entity("HomeStack.Core.Notifications.NotificationSettings", b =>
+                {
+                    b.HasOne("HomeStack.Core.Data.Household", null)
+                        .WithOne()
+                        .HasForeignKey("HomeStack.Core.Notifications.NotificationSettings", "HouseholdId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("HomeStack.Modules.Inventory.InventoryItem", b =>

@@ -6,6 +6,7 @@ import { useLogout, useMe } from "@/core/auth";
 import { PageHeader } from "@/core/layout";
 import { Button, Card, ErrorText, Field, Input } from "@/core/ui";
 import { modules } from "@/modules";
+import { BackupsCard, NotificationsCard } from "./SystemSettings";
 
 interface UserDto { id: number; name: string; username: string }
 
@@ -17,7 +18,9 @@ export function SettingsPage() {
       <PageHeader title="Settings" subtitle={me.data?.household.name} />
       <div className="flex flex-col gap-4">
         <HouseholdMembers />
+        <NotificationsCard />
         {modules.map((m) => m.Settings && <m.Settings key={m.id} />)}
+        <BackupsCard />
         <Card title="Account">
           <p className="mb-3 text-sm text-muted">Signed in as <b className="text-text">{me.data?.user.username}</b></p>
           <Button onClick={() => logout.mutate()} busy={logout.isPending}><LogOut className="size-4" />Sign out</Button>

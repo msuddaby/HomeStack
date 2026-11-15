@@ -8,5 +8,7 @@ frontend/dist/
 frontend/dev-dist/
 # Data
 data/
+data-dev/
+backups/
 .env
 *.log

@@ -19,6 +19,7 @@ public class MealsModule : IModule
     public void AddServices(IServiceCollection services, IConfiguration configuration)
     {
         services.AddScoped<MealsService>();
+        services.AddScoped<HomeStack.Core.Notifications.IDigestSource, MealsDigest>();
         services.AddHttpClient<RecipeImporter>(c =>
             {
                 c.Timeout = TimeSpan.FromSeconds(12);

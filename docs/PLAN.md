@@ -78,8 +78,10 @@ Modules may read each other through service functions (e.g. meal planning reads 
 - An **MCP server** exposing HomeStack, so you can ask Claude "what's about to go off?" from any client
 
 ### Cross-cutting
-- Notifications: daily digest (expiring/freeze-now) via ntfy (self-hostable) or web push
-- Nightly SQLite backup to a mounted folder
+- ✅ Docker deployment: restart policy, runs as host user, persistent sign-in keys (built 2026-11-14)
+- ✅ Nightly SQLite backup (`VACUUM INTO`) to a mounted folder with retention; Settings → Backups (built 2026-11-14)
+- ✅ Daily digest via ntfy: modules contribute sections through `IDigestSource`; background jobs act for a household
+  through `HouseholdScope` (built 2026-11-14). Later: web push as a second channel, per-user subscriptions
 - Waste stats: money/items thrown out per month
 
 ### Future module ideas

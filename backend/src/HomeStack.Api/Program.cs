@@ -1,7 +1,9 @@
+using HomeStack.Api;
 using HomeStack.Core;
 using HomeStack.Modules.Inventory;
 using HomeStack.Modules.Meals;
 using HomeStack.Modules.Shopping;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 
@@ -16,9 +18,16 @@ IModule[] modules =
 ];
 
 builder.Services.AddHomeStack(builder.Configuration, modules);
+builder.Services.AddBackups(builder.Configuration);
 
+var dataDir = builder.Configuration["DataDir"] ?? "data";
 var connectionString = builder.Configuration.GetConnectionString("Default")
-    ?? $"Data Source={Path.Combine(builder.Configuration["DataDir"] ?? "data", "homestack.db")}";
+    ?? $"Data Source={Path.Combine(dataDir, "homestack.db")}";
+
+// Keep cookie-signing keys with the data, so restarts and image updates don't sign everyone out.
+if (!builder.Environment.IsEnvironment("Testing"))
+    builder.Services.AddDataProtection().SetApplicationName("HomeStack")
+        .PersistKeysToFileSystem(new DirectoryInfo(Path.Combine(dataDir, "keys")));
 builder.Services.AddDbContext<HomeStackDbContext>(o => o.UseSqlite(connectionString, x => x.MigrationsAssembly(typeof(Program).Assembly.GetName().Name)));
 
 builder.Services.AddOpenApi();
@@ -54,6 +63,7 @@ if (app.Environment.IsDevelopment()) app.MapOpenApi();
 
 app.MapGet("/api/health", () => Results.Ok(new { status = "ok" })).AllowAnonymous();
 app.MapHomeStack();
+app.MapBackupEndpoints();
 
 // Unknown API routes are 404s; everything else is the React app (client-side routing).
 app.Map("/api/{**rest}", () => Results.NotFound());

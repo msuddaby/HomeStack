@@ -10,3 +10,5 @@ React frontend (`frontend/`, Vite PWA, TanStack Query, Tailwind v4). Roadmap: `d
 - Phone-first UI: test layouts at ~390px wide; sheets (`Sheet`) instead of pages for quick actions.
 - Verify: `cd backend && dotnet test`; `cd frontend && npm run typecheck && npm run build`.
 - AI features go behind a provider interface (Claude or Ollama), not hard-wired.
+- Background jobs extend `PeriodicWorker`; to act for a household, `HouseholdScope.Enter(id)` on a fresh scope first.
+- Dev uses `data-dev/`; the Docker deployment on this machine uses `data/` (real data, don't touch).

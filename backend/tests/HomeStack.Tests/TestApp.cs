@@ -1,7 +1,10 @@
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Net;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.TestHost;
+using HomeStack.Core.Notifications;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -19,6 +22,9 @@ public sealed class FixedTime(DateTimeOffset now) : TimeProvider
 public sealed class TestApp : WebApplicationFactory<Program>
 {
     private readonly string _dbPath = Path.Combine(Path.GetTempPath(), $"homestack-test-{Guid.NewGuid():N}.db");
+    public string BackupDir { get; } = Path.Combine(Path.GetTempPath(), $"homestack-test-backups-{Guid.NewGuid():N}");
+    /// <summary>Stands in for the ntfy server.</summary>
+    public FakeHttp Ntfy { get; } = new();
     // Anchored to the real date: cookie auth also uses this clock, and the HTTP client drops cookies that look expired.
     public FixedTime Time { get; } = new(new DateTimeOffset(DateTime.UtcNow.Date.AddHours(12), TimeSpan.Zero));
     public DateOnly Today => DateOnly.FromDateTime(Time.Now.UtcDateTime);
@@ -32,7 +38,11 @@ public sealed class TestApp : WebApplicationFactory<Program>
     {
         builder.UseEnvironment("Testing");
         builder.UseSetting("ConnectionStrings:Default", $"Data Source={_dbPath};Pooling=False");
+        builder.UseSetting("BackgroundJobs:Enabled", "false");
+        builder.UseSetting("Backup:Directory", BackupDir);
+        builder.UseSetting("Backup:Keep", "3");
         builder.ConfigureServices(s => s.Replace(ServiceDescriptor.Singleton<TimeProvider>(Time)));
+        builder.ConfigureTestServices(s => s.AddHttpClient<NtfyClient>().ConfigurePrimaryHttpMessageHandler(() => Ntfy));
     }
 
     /// <summary>A client logged in as the first user of a freshly set-up household.</summary>
@@ -50,6 +60,20 @@ public sealed class TestApp : WebApplicationFactory<Program>
         base.Dispose(disposing);
         foreach (var f in new[] { _dbPath, _dbPath + "-wal", _dbPath + "-shm" })
             try { File.Delete(f); } catch (IOException) { }
+        try { Directory.Delete(BackupDir, recursive: true); } catch (IOException) { }
+    }
+}
+
+/// <summary>Records requests and answers with <see cref="Status"/>.</summary>
+public sealed class FakeHttp : HttpMessageHandler
+{
+    public List<(HttpRequestMessage Request, string Body)> Requests { get; } = [];
+    public HttpStatusCode Status { get; set; } = HttpStatusCode.OK;
+
+    protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+    {
+        Requests.Add((request, request.Content is null ? "" : await request.Content.ReadAsStringAsync(ct)));
+        return new HttpResponseMessage(Status) { Content = new StringContent(Status == HttpStatusCode.OK ? "{}" : "forbidden topic") };
     }
 }
 

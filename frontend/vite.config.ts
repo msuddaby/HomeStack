@@ -35,6 +35,8 @@ export default defineConfig({
   ],
   server: {
     host: true,
+    // Allow access through `tailscale serve` (https://<machine>.<tailnet>.ts.net).
+    allowedHosts: [".ts.net"],
     proxy: { "/api": "http://localhost:5080" },
   },
   build: { outDir: "dist" },

@@ -1,6 +1,7 @@
 using System.Text.Json.Serialization;
 using HomeStack.Core.Auth;
 using HomeStack.Core.Data;
+using HomeStack.Core.Notifications;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -23,7 +24,11 @@ public static class HomeStackExtensions
         }
 
         services.AddHttpContextAccessor();
+        services.AddScoped<HouseholdScope>();
         services.AddScoped<ICurrentUser, HttpCurrentUser>();
+        services.AddScoped<DigestService>();
+        services.AddHttpClient<NtfyClient>(c => c.Timeout = TimeSpan.FromSeconds(10));
+        services.AddHostedService<DigestWorker>();
         services.AddSingleton(TimeProvider.System);
         services.AddSingleton<IPasswordHasher<User>, PasswordHasher<User>>();
 
@@ -53,6 +58,7 @@ public static class HomeStackExtensions
     public static IEndpointRouteBuilder MapHomeStack(this IEndpointRouteBuilder app)
     {
         app.MapAuthEndpoints();
+        app.MapNotificationEndpoints();
 
         var modules = app.ServiceProvider.GetServices<IModule>().ToList();
         app.MapGet("/api/modules", () => modules.Select(m => new { m.Id, m.Name })).WithTags("Core");
