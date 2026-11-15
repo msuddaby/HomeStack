@@ -30,6 +30,7 @@ public class HomeStackDbContext(DbContextOptions<HomeStackDbContext> options, IE
         });
 
         Notifications.NotificationSettings.Configure(mb);
+        Ai.AiSettings.Configure(mb);
 
         foreach (var module in modules) module.ConfigureModel(mb);
     }

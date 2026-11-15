@@ -6,7 +6,7 @@ import { useLogout, useMe } from "@/core/auth";
 import { PageHeader } from "@/core/layout";
 import { Button, Card, ErrorText, Field, Input } from "@/core/ui";
 import { modules } from "@/modules";
-import { BackupsCard, NotificationsCard } from "./SystemSettings";
+import { AiCard, BackupsCard, NotificationsCard } from "./SystemSettings";
 
 interface UserDto { id: number; name: string; username: string }
 
@@ -18,6 +18,7 @@ export function SettingsPage() {
       <PageHeader title="Settings" subtitle={me.data?.household.name} />
       <div className="flex flex-col gap-4">
         <HouseholdMembers />
+        <AiCard />
         <NotificationsCard />
         {modules.map((m) => m.Settings && <m.Settings key={m.id} />)}
         <BackupsCard />

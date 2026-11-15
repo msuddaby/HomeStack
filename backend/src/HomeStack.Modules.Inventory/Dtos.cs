@@ -85,6 +85,20 @@ public record StockDto(int ProductId, double Quantity, DateOnly? SoonestExpiry);
 public record LowStockDto(ProductDto Product, double Quantity);
 public record LocationCountDto(int LocationId, string Name, LocationKind Kind, int Items);
 
+/// <summary>Several items at once (receipt review, typed lists). All-or-nothing.</summary>
+public record AddItemsRequest([Required, MinLength(1), MaxLength(200)] List<AddItemRequest> Items) : IValidatable
+{
+    public IEnumerable<ValidationResult> Validate()
+    {
+        for (var i = 0; i < (Items?.Count ?? 0); i++)
+        {
+            var prefix = $"items[{i}].";
+            foreach (var r in DtoValidator.Validate(Items![i]))
+                yield return new ValidationResult(r.ErrorMessage, r.MemberNames.Select(m => prefix + m).ToList());
+        }
+    }
+}
+
 public record InventoryDashboardDto(
     IReadOnlyList<ItemDto> Expired,
     IReadOnlyList<ItemDto> ExpiringSoon,

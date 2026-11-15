@@ -1,5 +1,6 @@
 using System.Text.Json.Serialization;
 using HomeStack.Core.Auth;
+using HomeStack.Core.Ai;
 using HomeStack.Core.Data;
 using HomeStack.Core.Notifications;
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -29,6 +30,13 @@ public static class HomeStackExtensions
         services.AddScoped<DigestService>();
         services.AddHttpClient<NtfyClient>(c => c.Timeout = TimeSpan.FromSeconds(10));
         services.AddHostedService<DigestWorker>();
+
+        // AI: one provider per wire format; AiService picks the household's.
+        services.AddScoped<AiService>();
+        services.AddHttpClient<OpenAiCompatibleProvider>(c => c.Timeout = TimeSpan.FromSeconds(120));
+        services.AddHttpClient<AnthropicProvider>(c => c.Timeout = TimeSpan.FromSeconds(120));
+        services.AddScoped<IAiProvider>(sp => sp.GetRequiredService<OpenAiCompatibleProvider>());
+        services.AddScoped<IAiProvider>(sp => sp.GetRequiredService<AnthropicProvider>());
         services.AddSingleton(TimeProvider.System);
         services.AddSingleton<IPasswordHasher<User>, PasswordHasher<User>>();
 
@@ -59,6 +67,7 @@ public static class HomeStackExtensions
     {
         app.MapAuthEndpoints();
         app.MapNotificationEndpoints();
+        app.MapAiEndpoints();
 
         var modules = app.ServiceProvider.GetServices<IModule>().ToList();
         app.MapGet("/api/modules", () => modules.Select(m => new { m.Id, m.Name })).WithTags("Core");

@@ -25,6 +25,8 @@ public sealed class TestApp : WebApplicationFactory<Program>
     public string BackupDir { get; } = Path.Combine(Path.GetTempPath(), $"homestack-test-backups-{Guid.NewGuid():N}");
     /// <summary>Stands in for the ntfy server.</summary>
     public FakeHttp Ntfy { get; } = new();
+    /// <summary>Stands in for every AI service (OpenAI-compatible and Anthropic).</summary>
+    public FakeHttp Ai { get; } = new();
     // Anchored to the real date: cookie auth also uses this clock, and the HTTP client drops cookies that look expired.
     public FixedTime Time { get; } = new(new DateTimeOffset(DateTime.UtcNow.Date.AddHours(12), TimeSpan.Zero));
     public DateOnly Today => DateOnly.FromDateTime(Time.Now.UtcDateTime);
@@ -42,7 +44,12 @@ public sealed class TestApp : WebApplicationFactory<Program>
         builder.UseSetting("Backup:Directory", BackupDir);
         builder.UseSetting("Backup:Keep", "3");
         builder.ConfigureServices(s => s.Replace(ServiceDescriptor.Singleton<TimeProvider>(Time)));
-        builder.ConfigureTestServices(s => s.AddHttpClient<NtfyClient>().ConfigurePrimaryHttpMessageHandler(() => Ntfy));
+        builder.ConfigureTestServices(s =>
+        {
+            s.AddHttpClient<NtfyClient>().ConfigurePrimaryHttpMessageHandler(() => Ntfy);
+            s.AddHttpClient<HomeStack.Core.Ai.OpenAiCompatibleProvider>().ConfigurePrimaryHttpMessageHandler(() => Ai);
+            s.AddHttpClient<HomeStack.Core.Ai.AnthropicProvider>().ConfigurePrimaryHttpMessageHandler(() => Ai);
+        });
     }
 
     /// <summary>A client logged in as the first user of a freshly set-up household.</summary>
@@ -69,11 +76,15 @@ public sealed class FakeHttp : HttpMessageHandler
 {
     public List<(HttpRequestMessage Request, string Body)> Requests { get; } = [];
     public HttpStatusCode Status { get; set; } = HttpStatusCode.OK;
+    /// <summary>Response bodies to hand out in order; the last one repeats. Default "{}".</summary>
+    public Queue<string> Bodies { get; } = new();
+    private string _last = "{}";
 
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
     {
         Requests.Add((request, request.Content is null ? "" : await request.Content.ReadAsStringAsync(ct)));
-        return new HttpResponseMessage(Status) { Content = new StringContent(Status == HttpStatusCode.OK ? "{}" : "forbidden topic") };
+        if (Bodies.Count > 0) _last = Bodies.Dequeue();
+        return new HttpResponseMessage(Status) { Content = new StringContent(Status == HttpStatusCode.OK ? _last : "{\"error\":{\"message\":\"nope\"}}") };
     }
 }
 

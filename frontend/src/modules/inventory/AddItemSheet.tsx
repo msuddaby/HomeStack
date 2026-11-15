@@ -1,10 +1,11 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
-import { Check, ChevronDown, ScanBarcode } from "lucide-react";
+import { Check, ChevronDown, PenLine, Receipt, ScanBarcode } from "lucide-react";
 import { ApiError, errorMessage } from "@/core/api";
 import { todayISO } from "@/core/dates";
 import { Button, Chip, cx, ErrorText, Field, Input, Sheet } from "@/core/ui";
 import { lookupBarcode, useAddItem, useCategories, useLocations, useProductSearch, type Product } from "./api";
 import { BarcodeScanner } from "./BarcodeScanner";
+import { ReadSheet, type ReadMode } from "./ReadSheet";
 import { guessCategory, suggestExpiry } from "./logic";
 
 interface Form {
@@ -39,6 +40,7 @@ export function AddItemSheet({ open, onClose, defaultLocationId }: { open: boole
   const [locationTouched, setLocationTouched] = useState(false);
   const [showMore, setShowMore] = useState(false);
   const [scanning, setScanning] = useState(false);
+  const [reading, setReading] = useState<ReadMode | null>(null);
   const [scanNote, setScanNote] = useState<string | null>(null);
   const [added, setAdded] = useState<string[]>([]);
   const nameRef = useRef<HTMLInputElement>(null);
@@ -46,7 +48,7 @@ export function AddItemSheet({ open, onClose, defaultLocationId }: { open: boole
   const set = <K extends keyof Form>(k: K, v: Form[K]) => setF((p) => ({ ...p, [k]: v }));
 
   useEffect(() => {
-    if (open) { setF(blank(defaultLocationId ?? null)); setLocationTouched(!!defaultLocationId); setAdded([]); setScanNote(null); add.reset(); }
+    if (open) { setF(blank(defaultLocationId ?? null)); setLocationTouched(!!defaultLocationId); setAdded([]); setScanNote(null); setReading(null); add.reset(); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
@@ -133,7 +135,7 @@ export function AddItemSheet({ open, onClose, defaultLocationId }: { open: boole
 
   return (
     <>
-      <Sheet open={open && !scanning} onClose={onClose} title="Add to inventory"
+      <Sheet open={open && !scanning && !reading} onClose={onClose} title="Add to inventory"
         footer={
           <div className="flex gap-2">
             <Button className="flex-1" disabled={!canSubmit} busy={add.isPending} onClick={() => submit(true)}>Add &amp; next</Button>
@@ -141,6 +143,12 @@ export function AddItemSheet({ open, onClose, defaultLocationId }: { open: boole
           </div>
         }>
         <form className="flex flex-col gap-4" onSubmit={(e) => { e.preventDefault(); if (canSubmit) submit(true); }}>
+          {added.length === 0 && !f.name && (
+            <div className="grid grid-cols-2 gap-2">
+              <Button type="button" onClick={() => setReading("receipt")}><Receipt className="size-4" />Scan receipt</Button>
+              <Button type="button" onClick={() => setReading("text")}><PenLine className="size-4" />Type a list</Button>
+            </div>
+          )}
           {added.length > 0 && (
             <div className="flex flex-wrap gap-1">{added.slice(0, 6).map((n, i) => <Chip key={i} tone="accent"><Check className="size-3" />{n}</Chip>)}</div>
           )}
@@ -228,6 +236,7 @@ export function AddItemSheet({ open, onClose, defaultLocationId }: { open: boole
         </form>
       </Sheet>
       <BarcodeScanner open={open && scanning} onClose={() => setScanning(false)} onDetected={onDetected} />
+      <ReadSheet open={open && !!reading} mode={reading ?? "receipt"} onBack={() => setReading(null)} onDone={onClose} />
     </>
   );
 }

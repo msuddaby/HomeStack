@@ -9,6 +9,6 @@ React frontend (`frontend/`, Vite PWA, TanStack Query, Tailwind v4). Roadmap: `d
 - Dates without time use `DateOnly` ("YYYY-MM-DD" on the wire); "today" comes from `TimeProvider.Today()`.
 - Phone-first UI: test layouts at ~390px wide; sheets (`Sheet`) instead of pages for quick actions.
 - Verify: `cd backend && dotnet test`; `cd frontend && npm run typecheck && npm run build`.
-- AI features go behind a provider interface (Claude or Ollama), not hard-wired.
+- AI features use `AiService` (household's chosen provider: OpenAI-compatible or Anthropic), never a hard-wired vendor. AI output is reviewed by the user before it changes data.
 - Background jobs extend `PeriodicWorker`; to act for a household, `HouseholdScope.Enter(id)` on a fresh scope first.
 - Dev uses `data-dev/`; the Docker deployment on this machine uses `data/` (real data, don't touch).

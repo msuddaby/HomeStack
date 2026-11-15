@@ -17,6 +17,39 @@ namespace HomeStack.Api.Migrations
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.15");
 
+            modelBuilder.Entity("HomeStack.Core.Ai.AiSettings", b =>
+                {
+                    b.Property<int>("HouseholdId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("ApiKey")
+                        .HasMaxLength(300)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("BaseUrl")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Model")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Provider")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("VisionModel")
+                        .HasMaxLength(120)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("HouseholdId");
+
+                    b.ToTable("ai_settings", (string)null);
+                });
+
             modelBuilder.Entity("HomeStack.Core.Data.Household", b =>
                 {
                     b.Property<int>("Id")
@@ -497,6 +530,15 @@ namespace HomeStack.Api.Migrations
                     b.HasIndex("HouseholdId", "ProductId");
 
                     b.ToTable("shopping_items", (string)null);
+                });
+
+            modelBuilder.Entity("HomeStack.Core.Ai.AiSettings", b =>
+                {
+                    b.HasOne("HomeStack.Core.Data.Household", null)
+                        .WithOne()
+                        .HasForeignKey("HomeStack.Core.Ai.AiSettings", "HouseholdId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("HomeStack.Core.Data.User", b =>

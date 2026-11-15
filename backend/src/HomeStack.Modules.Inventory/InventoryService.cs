@@ -111,6 +111,21 @@ public class InventoryService(HomeStackDbContext db, ICurrentUser me, TimeProvid
 
     public async Task<ItemDto> GetItemAsync(int id) => (await LoadItem(id)).ToDto();
 
+    /// <summary>Adds several items in one transaction. New products with a name we already know reuse that product.</summary>
+    public async Task<List<ItemDto>> AddItemsAsync(IReadOnlyList<AddItemRequest> requests)
+    {
+        await using var tx = await db.Database.BeginTransactionAsync();
+        var added = new List<ItemDto>();
+        foreach (var r in requests)
+        {
+            var req = r.ProductId is null && r.Product is { } p && await FindByNameAsync(p.Name) is { } known
+                ? r with { ProductId = known.Id, Product = null } : r;
+            added.Add(await AddItemAsync(req));
+        }
+        await tx.CommitAsync();
+        return added;
+    }
+
     public async Task<ItemDto> AddItemAsync(AddItemRequest req)
     {
         var location = await Locations.SingleOrDefaultAsync(l => l.Id == req.LocationId) ?? throw new BadRequestException("Unknown location");

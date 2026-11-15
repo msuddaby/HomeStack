@@ -70,10 +70,12 @@ Modules may read each other through service functions (e.g. meal planning reads 
   are staples. Cooking converts within mass/volume/count units. URL import reads schema.org JSON-LD and only fetches public hosts.
 - Later: pantry staples list per household, "have enough" quantity checks, nutrition, recipe photos upload
 
-### Phase 4: AI (pluggable provider: Claude / Ollama)
-- **Receipt scan**: photo → vision model → reviewable list of items → add all. Store abbreviations like "GV WHL MLK" really need an LLM; plain OCR can't handle them.
+### Phase 4: AI (pluggable provider)
+- ✅ Provider layer (built 2026-11-14): per-household settings; OpenAI-compatible format (DeepSeek default, OpenAI, Ollama,
+  OpenRouter, LM Studio…) plus native Anthropic; connection test checks text and vision; `AiService.JsonAsync<T>` for modules
+- ✅ Receipt scan + natural-language add (built 2026-11-14): photos (up to 4, shrunk on the phone) or typed text → review list
+  (names, category, place, quantity, expiry) → add all in one transaction; known product names are fed to the model and matched
 - Fridge/pantry photo → suggested items to add
-- Natural-language add: "2 lbs chicken, a dozen eggs, milk"
 - Meal plan generator that uses what's expiring, plus recipe suggestions
 - An **MCP server** exposing HomeStack, so you can ask Claude "what's about to go off?" from any client
 

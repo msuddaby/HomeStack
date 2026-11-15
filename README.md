@@ -27,6 +27,9 @@ under **Settings → Household members**. The container restarts on its own afte
   To restore, stop the container, copy a backup over `data/homestack.db` (deleting `homestack.db-wal`/`-shm`), and start it.
 - **Daily reminder:** **Settings → Daily reminder** sends a morning push via [ntfy](https://ntfy.sh)
   (free app; use ntfy.sh or your own server) listing what to freeze, what's expiring and what's on the menu.
+- **AI (optional):** **Settings → AI** connects any provider: DeepSeek (default, `deepseek-flash`), Claude, OpenAI,
+  a local Ollama (`http://host.docker.internal:11434/v1`), or anything OpenAI-compatible. *Test connection* checks
+  that the model can read photos. Then **Inventory → + → Scan receipt** or **Type a list** reads items for you to review.
 - **Update:** `git pull && docker compose up -d --build`.
 
 **Phones and the camera:** browsers only allow camera access (barcode scanning) over HTTPS. The easiest
@@ -66,7 +69,9 @@ Migrations are applied automatically on startup.
    `ICurrentUser.HouseholdId`). Register it in the `modules` array in `src/HomeStack.Api/Program.cs`, then add a migration.
 2. **Frontend:** create `src/modules/<id>/index.ts` exporting a `WebModule` and add it to `src/modules/index.ts`.
    It gets a nav tab, its routes under `/<path>`, and its `DashboardWidget` on Home automatically.
-3. **Daily reminder (optional):** register a scoped `IDigestSource` in `AddServices` returning `DigestSection`s;
+3. **AI (optional):** inject `AiService` and call `JsonAsync<T>(new AiPrompt(system, user, images))`. It uses whatever
+   provider the household picked; throw nothing provider-specific. Results are suggestions for the user to review.
+4. **Daily reminder (optional):** register a scoped `IDigestSource` in `AddServices` returning `DigestSection`s;
    it runs with the household's `ICurrentUser`, so your normal services work. Empty sections are dropped.
 
 Modules talk to each other through services (e.g. meal planning injects `InventoryService`), not by
