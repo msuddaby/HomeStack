@@ -3,7 +3,9 @@ using HomeStack.Core.Auth;
 using HomeStack.Core.Ai;
 using HomeStack.Core.Data;
 using HomeStack.Core.Notifications;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
@@ -55,8 +57,20 @@ public static class HomeStackExtensions
                 // This is an API: answer 401/403 instead of redirecting to a login page.
                 o.Events.OnRedirectToLogin = ctx => { ctx.Response.StatusCode = 401; return Task.CompletedTask; };
                 o.Events.OnRedirectToAccessDenied = ctx => { ctx.Response.StatusCode = 403; return Task.CompletedTask; };
+                // A removed household member is signed out on their next request.
+                o.Events.OnValidatePrincipal = async ctx =>
+                {
+                    if (!int.TryParse(ctx.Principal?.FindFirst(HomeStackClaims.UserId)?.Value, out var userId)) return;
+                    var db = ctx.HttpContext.RequestServices.GetRequiredService<HomeStackDbContext>();
+                    if (!await db.Users.AnyAsync(u => u.Id == userId))
+                    {
+                        ctx.RejectPrincipal();
+                        await ctx.HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+                    }
+                };
             });
         services.AddAuthorization();
+        services.AddLoginRateLimit(config);
         services.AddProblemDetails();
         services.AddExceptionHandler<HomeStackExceptionHandler>();
         return services;

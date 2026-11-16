@@ -1,13 +1,13 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { Link } from "react-router";
-import { AlertTriangle, Clock, Plus, Snowflake, ShoppingBasket, Sparkles, Archive, ShoppingCart, Check } from "lucide-react";
+import { AlertTriangle, Clock, Plus, Snowflake, ShoppingBasket, Sparkles, Archive, ShoppingCart, Check, Flame, ChevronRight } from "lucide-react";
 import { useAddToList } from "@/modules/shopping/api";
 import { duration } from "@/core/dates";
 import { Button, Card, Chip, ErrorText, Spinner } from "@/core/ui";
-import { useCategories, useDashboard, useMove, type Item, type LocationKind } from "./api";
+import { useCategories, useDashboard, useMove, useUndoToast, useWasteStats, type Item, type LocationKind } from "./api";
 import { ItemRow } from "./ItemRow";
 import { ItemSheet } from "./ItemSheet";
-import { formatQty } from "./logic";
+import { formatMoney, formatQty } from "./logic";
 import { ProductSheet } from "./ProductSheet";
 
 const KIND_ICON: Record<LocationKind, string> = { pantry: "🥫", fridge: "🧊", freezer: "❄️", other: "📦" };
@@ -17,6 +17,7 @@ export function InventoryDashboardWidget() {
   const categories = useCategories().data ?? [];
   const catById = useMemo(() => new Map(categories.map((c) => [c.id, c])), [categories]);
   const move = useMove();
+  const undoToast = useUndoToast();
   const addToList = useAddToList();
   const [listed, setListed] = useState<Set<number>>(new Set());
   const [selected, setSelected] = useState<Item | null>(null);
@@ -55,7 +56,9 @@ export function InventoryDashboardWidget() {
           <ul className="divide-y divide-border">
             {d.freezeSoon.map((i) => row(i, freezer && (
               <Button className="shrink-0 px-3" busy={move.isPending && move.variables?.id === i.id}
-                onClick={() => move.mutate({ id: i.id, locationId: freezer.locationId })}><Snowflake className="size-4" />Freeze</Button>
+                onClick={async () => undoToast(await move.mutateAsync({ id: i.id, locationId: freezer.locationId }), `Froze ${i.product.name}`)}>
+                <Snowflake className="size-4" />Freeze
+              </Button>
             )))}
           </ul>
         </Card>
@@ -106,9 +109,29 @@ export function InventoryDashboardWidget() {
         </Card>
       )}
 
+      <WasteLine />
+
       <ItemSheet item={selected} onClose={() => setSelected(null)} />
       <ProductSheet productId={productId} onClose={() => setProductId(null)} />
     </>
+  );
+}
+
+/** "This month: 4 thrown out ($11.20), vs 6 last month". Hidden when nothing was thrown out either month. */
+function WasteLine() {
+  const stats = useWasteStats(2).data;
+  if (!stats) return null;
+  const [last, now] = stats.months;
+  if (!now || !last || (!now.wasted && !last.wasted)) return null;
+  return (
+    <Link to="/inventory/waste" className="flex items-center gap-3 rounded-2xl border border-border bg-surface p-3 text-sm hover:bg-surface-2">
+      <Flame className="size-5 shrink-0 text-danger" />
+      <span className="min-w-0 flex-1">
+        This month: <b>{now.wasted} thrown out</b>{now.wastedValue != null && ` (${formatMoney(now.wastedValue)})`}
+        <span className="text-muted">, vs {last.wasted} last month</span>
+      </span>
+      <ChevronRight className="size-4 shrink-0 text-muted" />
+    </Link>
   );
 }
 

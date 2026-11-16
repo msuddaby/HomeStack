@@ -4,8 +4,8 @@ import { useAddToList } from "@/modules/shopping/api";
 import { ApiError } from "@/core/api";
 import { shortDate, todayISO } from "@/core/dates";
 import { Button, Chip, ErrorText, Field, Input, Select, Sheet } from "@/core/ui";
-import { useCategories, useConsume, useDeleteItem, useLocations, useMove, useUpdateItem, type Item } from "./api";
-import { formatQty, itemStatus } from "./logic";
+import { useCategories, useConsume, useDeleteItem, useLocations, useMove, useUndoToast, useUpdateItem, type Item, type Location } from "./api";
+import { formatMoney, formatQty, itemStatus } from "./logic";
 import { ProductSheet } from "./ProductSheet";
 
 export function ItemSheet({ item, onClose }: { item: Item | null; onClose: () => void }) {
@@ -40,9 +40,21 @@ function Actions({ item, onClose, onEdit, onEditProduct }: { item: Item; onClose
   const step = item.quantity >= 2 ? 1 : item.quantity / 2;
   const error = consume.error ?? move.error ?? update.error ?? del.error ?? addToList.error;
 
+  const undoToast = useUndoToast();
+  const name = item.product.name;
+
   const use = async (quantity: number | undefined, wasted = false) => {
-    const remaining = await consume.mutateAsync({ id: item.id, quantity, wasted });
-    if (!remaining) onClose();
+    const result = await consume.mutateAsync({ id: item.id, quantity, wasted });
+    const all = !result.item;
+    undoToast(result, wasted ? `Threw out ${name}`
+      : all ? `Used up ${name}` : `Used ${formatQty(quantity ?? 1, item.unit).replace(/^×/, "") || "1"} of ${name}`);
+    if (all) onClose();
+  };
+
+  const moveTo = async (l: Location) => {
+    const result = await move.mutateAsync({ id: item.id, locationId: l.id });
+    undoToast(result, l.kind === "freezer" && !inFreezer ? `Froze ${name}`
+      : inFreezer && l.kind !== "freezer" ? `Thawed ${name} in ${l.name}` : `Moved ${name} to ${l.name}`);
   };
 
   return (
@@ -64,6 +76,7 @@ function Actions({ item, onClose, onEdit, onEditProduct }: { item: Item; onClose
         {item.frozenAt && <Detail label="Frozen" value={shortDate(item.frozenAt)} />}
         {item.purchasedAt && <Detail label="Bought" value={shortDate(item.purchasedAt)} />}
         {item.openedAt && <Detail label="Opened" value={shortDate(item.openedAt)} />}
+        {item.price != null && <Detail label="Worth" value={formatMoney(item.price)} />}
         {item.notes && <div className="col-span-2"><dt className="text-xs text-muted">Notes</dt><dd>{item.notes}</dd></div>}
       </dl>
 
@@ -96,7 +109,7 @@ function Actions({ item, onClose, onEdit, onEditProduct }: { item: Item; onClose
             const thawing = inFreezer && l.kind !== "freezer";
             if (freezing && !freezable) return null;
             return (
-              <Button key={l.id} variant={freezing ? "primary" : "secondary"} busy={move.isPending} onClick={() => move.mutate({ id: item.id, locationId: l.id })}>
+              <Button key={l.id} variant={freezing ? "primary" : "secondary"} busy={move.isPending} onClick={() => moveTo(l)}>
                 {freezing && <Snowflake className="size-4" />}
                 {freezing ? `Freeze (${l.name})` : thawing ? `Thaw → ${l.name}` : l.name}
               </Button>
@@ -127,13 +140,13 @@ function Detail({ label, value }: { label: string; value: string }) {
 
 const toUpdate = (i: Item) => ({
   id: i.id, locationId: i.location.id, quantity: i.quantity, unit: i.unit, purchasedAt: i.purchasedAt,
-  expiresAt: i.expiresAt, openedAt: i.openedAt, frozenAt: i.frozenAt, notes: i.notes,
+  expiresAt: i.expiresAt, openedAt: i.openedAt, frozenAt: i.frozenAt, notes: i.notes, price: i.price,
 });
 
 function EditForm({ item, onDone }: { item: Item; onDone: () => void }) {
   const locations = useLocations().data ?? [];
   const update = useUpdateItem();
-  const [f, setF] = useState(() => ({ ...toUpdate(item), quantity: String(item.quantity) }));
+  const [f, setF] = useState(() => ({ ...toUpdate(item), quantity: String(item.quantity), price: item.price == null ? "" : item.price.toFixed(2) }));
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setF({ ...f, [k]: e.target.value });
   const loc = locations.find((l) => l.id === Number(f.locationId));
   const err = update.error instanceof ApiError ? update.error : undefined;
@@ -144,6 +157,7 @@ function EditForm({ item, onDone }: { item: Item; onDone: () => void }) {
       e.preventDefault();
       await update.mutateAsync({
         ...f, locationId: Number(f.locationId), quantity: Number(f.quantity), unit: nul(f.unit), notes: nul(f.notes),
+        price: f.price.trim() === "" ? null : Number(f.price),
         purchasedAt: nul(f.purchasedAt), expiresAt: nul(f.expiresAt), openedAt: nul(f.openedAt), frozenAt: loc?.kind === "freezer" ? nul(f.frozenAt) : null,
       });
       onDone();
@@ -157,6 +171,9 @@ function EditForm({ item, onDone }: { item: Item; onDone: () => void }) {
       <Field label="Purchased"><Input type="date" value={f.purchasedAt ?? ""} onChange={set("purchasedAt")} /></Field>
       <Field label="Opened"><Input type="date" value={f.openedAt ?? ""} onChange={set("openedAt")} /></Field>
       {loc?.kind === "freezer" && <Field label="Date frozen"><Input type="date" value={f.frozenAt ?? ""} onChange={set("frozenAt")} /></Field>}
+      <Field label="Price ($)" error={err?.field("price")} hint="What the amount left is worth">
+        <Input inputMode="decimal" placeholder="Optional" value={f.price} onChange={set("price")} />
+      </Field>
       <Field label="Notes" className="col-span-2"><Input value={f.notes ?? ""} onChange={set("notes")} /></Field>
       {update.error && <ErrorText error={update.error} />}
       <div className="col-span-2 flex gap-2">

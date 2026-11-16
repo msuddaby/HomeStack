@@ -1,10 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { LogOut, UserPlus } from "lucide-react";
+import { Check, KeyRound, LogOut, Trash2, UserPlus } from "lucide-react";
 import { api, ApiError } from "@/core/api";
 import { useLogout, useMe } from "@/core/auth";
 import { PageHeader } from "@/core/layout";
-import { Button, Card, ErrorText, Field, Input } from "@/core/ui";
+import { Button, Card, ErrorText, Field, Input, Sheet } from "@/core/ui";
 import { modules } from "@/modules";
 import { AiCard, BackupsCard, NotificationsCard } from "./SystemSettings";
 
@@ -13,6 +13,7 @@ interface UserDto { id: number; name: string; username: string }
 export function SettingsPage() {
   const me = useMe();
   const logout = useLogout();
+  const [changingPassword, setChangingPassword] = useState(false);
   return (
     <>
       <PageHeader title="Settings" subtitle={me.data?.household.name} />
@@ -24,8 +25,12 @@ export function SettingsPage() {
         <BackupsCard />
         <Card title="Account">
           <p className="mb-3 text-sm text-muted">Signed in as <b className="text-text">{me.data?.user.username}</b></p>
-          <Button onClick={() => logout.mutate()} busy={logout.isPending}><LogOut className="size-4" />Sign out</Button>
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={() => setChangingPassword(true)}><KeyRound className="size-4" />Change password</Button>
+            <Button onClick={() => logout.mutate()} busy={logout.isPending}><LogOut className="size-4" />Sign out</Button>
+          </div>
         </Card>
+        <ChangePasswordSheet open={changingPassword} onClose={() => setChangingPassword(false)} />
       </div>
     </>
   );
@@ -41,6 +46,12 @@ function HouseholdMembers() {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["household-users"] }); setAdding(false); setF({ name: "", username: "", password: "" }); },
   });
   const err = create.error instanceof ApiError ? create.error : undefined;
+  const me = useMe();
+  const [removing, setRemoving] = useState<UserDto | null>(null);
+  const remove = useMutation({
+    mutationFn: (id: number) => api(`/household/users/${id}`, { method: "DELETE" }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["household-users"] }); setRemoving(null); },
+  });
 
   return (
     <Card title="Household members" action={!adding && <Button variant="ghost" onClick={() => setAdding(true)}><UserPlus className="size-4" />Add</Button>}>
@@ -48,10 +59,25 @@ function HouseholdMembers() {
         {users.data?.map((u) => (
           <li key={u.id} className="flex items-center gap-3 py-2">
             <span className="flex size-9 items-center justify-center rounded-full bg-accent-soft font-semibold text-accent">{u.name[0]?.toUpperCase()}</span>
-            <div><p className="text-sm font-medium">{u.name}</p><p className="text-xs text-muted">@{u.username}</p></div>
+            <div className="min-w-0 flex-1"><p className="text-sm font-medium">{u.name}</p><p className="text-xs text-muted">@{u.username}</p></div>
+            {u.id !== me.data?.user.id && (
+              <Button variant="ghost" className="px-3" aria-label={`Remove ${u.name}`} onClick={() => { remove.reset(); setRemoving(u); }}>
+                <Trash2 className="size-4" />
+              </Button>
+            )}
           </li>
         ))}
       </ul>
+      <Sheet open={!!removing} onClose={() => setRemoving(null)} title={`Remove ${removing?.name ?? ""}?`}>
+        <p className="text-sm">
+          They'll be signed out on every device and won't be able to sign in again. Everything they added stays.
+        </p>
+        <ErrorText error={remove.error} />
+        <div className="mt-4 flex gap-2">
+          <Button variant="danger" className="flex-1" busy={remove.isPending} onClick={() => removing && remove.mutate(removing.id)}>Remove</Button>
+          <Button variant="ghost" onClick={() => setRemoving(null)}>Cancel</Button>
+        </div>
+      </Sheet>
       {adding && (
         <form className="mt-3 grid gap-3 border-t border-border pt-3" onSubmit={(e) => { e.preventDefault(); create.mutate(); }}>
           <Field label="Name" error={err?.field("name")}><Input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} required /></Field>
@@ -67,5 +93,45 @@ function HouseholdMembers() {
         </form>
       )}
     </Card>
+  );
+}
+
+function ChangePasswordSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const blank = { currentPassword: "", newPassword: "", confirm: "" };
+  const [f, setF] = useState(blank);
+  const change = useMutation({
+    mutationFn: () => api("/auth/password", { body: { currentPassword: f.currentPassword, newPassword: f.newPassword } }),
+    onSuccess: () => setF(blank),
+  });
+  const err = change.error instanceof ApiError ? change.error : undefined;
+  const mismatch = f.confirm !== "" && f.confirm !== f.newPassword;
+  const close = () => { setF(blank); change.reset(); onClose(); };
+  const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement>) => setF({ ...f, [k]: e.target.value });
+
+  return (
+    <Sheet open={open} onClose={close} title="Change password">
+      {change.isSuccess ? (
+        <div className="flex flex-col items-center gap-3 py-4 text-center">
+          <Check className="size-8 text-accent" />
+          <p className="font-medium">Password changed</p>
+          <p className="text-sm text-muted">Use it next time you sign in. Devices already signed in stay signed in.</p>
+          <Button variant="primary" onClick={close}>Done</Button>
+        </div>
+      ) : (
+        <form className="grid gap-3" onSubmit={(e) => { e.preventDefault(); if (!mismatch) change.mutate(); }}>
+          <Field label="Current password" error={err?.field("currentPassword")}>
+            <Input type="password" autoComplete="current-password" value={f.currentPassword} onChange={set("currentPassword")} required />
+          </Field>
+          <Field label="New password" error={err?.field("newPassword")} hint="At least 8 characters">
+            <Input type="password" autoComplete="new-password" value={f.newPassword} onChange={set("newPassword")} required minLength={8} />
+          </Field>
+          <Field label="New password again" error={mismatch ? "The two new passwords don't match." : undefined}>
+            <Input type="password" autoComplete="new-password" value={f.confirm} onChange={set("confirm")} required />
+          </Field>
+          {change.error && !err?.errors && <ErrorText error={change.error} />}
+          <Button variant="primary" busy={change.isPending} disabled={mismatch}>Change password</Button>
+        </form>
+      )}
+    </Sheet>
   );
 }

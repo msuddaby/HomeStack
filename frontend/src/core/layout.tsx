@@ -2,6 +2,7 @@ import { NavLink, Outlet } from "react-router";
 import { Home, Settings } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { modules } from "@/modules";
+import { ToastProvider } from "./toast";
 import { cx } from "./ui";
 
 interface NavItem { to: string; label: string; icon: LucideIcon; end?: boolean }
@@ -14,6 +15,7 @@ const nav: NavItem[] = [
 
 export function Layout() {
   return (
+    <ToastProvider>
     <div className="min-h-dvh md:flex">
       {/* Desktop sidebar */}
       <aside className="sticky top-0 hidden h-dvh w-56 shrink-0 flex-col gap-1 border-r border-border bg-surface p-3 md:flex">
@@ -47,6 +49,7 @@ export function Layout() {
         </div>
       </nav>
     </div>
+    </ToastProvider>
   );
 }
 

@@ -62,12 +62,12 @@ public class InventoryTests
             new { product = NewProduct("Chicken thighs", "poultry"), locationId = Loc(locations, LocationKind.Fridge) })).Read<ItemDto>();
 
         app.Time.Now = app.Time.Now.AddDays(1);
-        var frozen = await (await client.Post($"/api/inventory/items/{chicken.Id}/move", new { locationId = Loc(locations, LocationKind.Freezer) })).Read<ItemDto>();
+        var frozen = (await (await client.Post($"/api/inventory/items/{chicken.Id}/move", new { locationId = Loc(locations, LocationKind.Freezer) })).Read<ItemActionDto>()).Item!;
         Assert.Equal(app.Today, frozen.FrozenAt);
         Assert.Equal(app.Today.AddDays(270), frozen.ExpiresAt);
 
         app.Time.Now = app.Time.Now.AddDays(30);
-        var thawed = await (await client.Post($"/api/inventory/items/{chicken.Id}/move", new { locationId = Loc(locations, LocationKind.Fridge) })).Read<ItemDto>();
+        var thawed = (await (await client.Post($"/api/inventory/items/{chicken.Id}/move", new { locationId = Loc(locations, LocationKind.Fridge) })).Read<ItemActionDto>()).Item!;
         Assert.Null(thawed.FrozenAt);
         Assert.Equal(app.Today.AddDays(2), thawed.ExpiresAt);
     }
@@ -80,11 +80,11 @@ public class InventoryTests
         var eggs = await (await client.Post("/api/inventory/items",
             new { product = NewProduct("Eggs", "eggs"), locationId = Loc(locations, LocationKind.Fridge), quantity = 12, unit = "pc" })).Read<ItemDto>();
 
-        var left = await (await client.Post($"/api/inventory/items/{eggs.Id}/consume", new { quantity = 4 })).Read<ItemDto>();
-        Assert.Equal(8, left.Quantity);
+        var left = await (await client.Post($"/api/inventory/items/{eggs.Id}/consume", new { quantity = 4 })).Read<ItemActionDto>();
+        Assert.Equal(8, left.Item!.Quantity);
 
-        var gone = await client.Post($"/api/inventory/items/{eggs.Id}/consume", new { wasted = true });
-        Assert.Equal(HttpStatusCode.NoContent, gone.StatusCode);
+        var gone = await (await client.Post($"/api/inventory/items/{eggs.Id}/consume", new { wasted = true })).Read<ItemActionDto>();
+        Assert.Null(gone.Item);
         Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync($"/api/inventory/items/{eggs.Id}")).StatusCode);
     }
 

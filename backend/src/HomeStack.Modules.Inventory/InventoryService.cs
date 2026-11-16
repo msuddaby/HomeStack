@@ -144,6 +144,7 @@ public class InventoryService(HomeStackDbContext db, ICurrentUser me, TimeProvid
             PurchasedAt = req.PurchasedAt ?? today,
             OpenedAt = req.OpenedAt,
             Notes = Mapping.Blank(req.Notes),
+            UnitPrice = Mapping.UnitPrice(req.Price, req.Quantity),
         };
         // Things put straight in the freezer count as frozen from purchase.
         item.FrozenAt = req.FrozenAt ?? (location.Kind == LocationKind.Freezer ? item.PurchasedAt : null);
@@ -151,7 +152,8 @@ public class InventoryService(HomeStackDbContext db, ICurrentUser me, TimeProvid
 
         db.Add(item);
         await db.SaveChangesAsync();
-        await LogAsync(item, InventoryEventType.Added, item.Quantity);
+        Log(item, InventoryEventType.Added, item.Quantity);
+        await db.SaveChangesAsync();
         item.Product = product;
         item.Location = location;
         return item.ToDto();
@@ -170,36 +172,74 @@ public class InventoryService(HomeStackDbContext db, ICurrentUser me, TimeProvid
         item.OpenedAt = req.OpenedAt;
         item.FrozenAt = req.FrozenAt;
         item.Notes = Mapping.Blank(req.Notes);
+        item.UnitPrice = Mapping.UnitPrice(req.Price, req.Quantity);
         await db.SaveChangesAsync();
         return item.ToDto();
     }
 
-    /// <summary>Use up or throw out some/all of an item. Returns the remaining item, or null if it's gone.</summary>
-    public async Task<ItemDto?> ConsumeAsync(int id, ConsumeRequest req)
+    /// <summary>Use up or throw out some/all of an item. The result's item is null if it's all gone.</summary>
+    public async Task<ItemActionDto> ConsumeAsync(int id, ConsumeRequest req)
     {
         var item = await LoadItem(id);
+        var before = ItemSnapshot.Of(item);
         var amount = Math.Min(req.Quantity ?? item.Quantity, item.Quantity);
-        await LogAsync(item, req.Wasted ? InventoryEventType.Wasted : InventoryEventType.Used, amount, save: false);
+        var ev = Log(item, req.Wasted ? InventoryEventType.Wasted : InventoryEventType.Used, amount, before, Mapping.ValueOf(item, amount));
 
         if (amount >= item.Quantity - 1e-9)
         {
             db.Remove(item);
             await db.SaveChangesAsync();
-            return null;
+            return new(null, ev.Id);
         }
         item.Quantity = Math.Round(item.Quantity - amount, 3);
         await db.SaveChangesAsync();
+        return new(item.ToDto(), ev.Id);
+    }
+
+    /// <summary>
+    /// Reverses a use, throw-out or move: puts the item back as it was and deletes the event, so stats never count it.
+    /// Only the newest action on an item, within an hour.
+    /// </summary>
+    public async Task<ItemDto> UndoAsync(int eventId)
+    {
+        var ev = await db.Set<InventoryEvent>().SingleOrDefaultAsync(e => e.Id == eventId && e.HouseholdId == Hid)
+            ?? throw new NotFoundException("Nothing to undo");
+        if (ev.Snapshot is null || ev.ItemId is not int itemId) throw new NotFoundException("Nothing to undo");
+        if (time.GetUtcNow().UtcDateTime - ev.At > UndoWindow
+            || await db.Set<InventoryEvent>().AnyAsync(e => e.ItemId == itemId && e.Id > ev.Id))
+            throw new ConflictException("Something else has happened to this item since, so it can't be undone.");
+
+        var snap = ItemSnapshot.Parse(ev.Snapshot);
+        var location = await Locations.SingleOrDefaultAsync(l => l.Id == snap.LocationId)
+            ?? throw new ConflictException("The place it was in has been deleted.");
+        var item = await Items.SingleOrDefaultAsync(i => i.Id == itemId);
+        if (item is null)
+        {
+            // Only a use or throw-out removes an item; anything else means it was deleted by hand.
+            if (ev.Type is not (InventoryEventType.Used or InventoryEventType.Wasted))
+                throw new ConflictException("This item has been deleted.");
+            item = new InventoryItem { Id = itemId, HouseholdId = Hid };
+            db.Add(item);
+        }
+        snap.ApplyTo(item);
+        item.Location = location;
+        item.Product ??= await Products.SingleAsync(p => p.Id == item.ProductId);
+        db.Remove(ev);
+        await db.SaveChangesAsync();
         return item.ToDto();
     }
+
+    private static readonly TimeSpan UndoWindow = TimeSpan.FromHours(1);
 
     /// <summary>
     /// Move an item. Into the freezer: records the freeze date and resets expiry to freezer life.
     /// Out of the freezer: treated as thawed (short use-by). Between other places: expiry can only get sooner
     /// (e.g. an opened jar moved to the fridge).
     /// </summary>
-    public async Task<ItemDto> MoveAsync(int id, MoveRequest req)
+    public async Task<ItemActionDto> MoveAsync(int id, MoveRequest req)
     {
         var item = await LoadItem(id);
+        var before = ItemSnapshot.Of(item);
         var target = await Locations.SingleOrDefaultAsync(l => l.Id == req.LocationId) ?? throw new BadRequestException("Unknown location");
         var from = item.Location!.Kind;
         var to = target.Kind;
@@ -228,9 +268,9 @@ public class InventoryService(HomeStackDbContext db, ICurrentUser me, TimeProvid
 
         item.LocationId = target.Id;
         item.Location = target;
-        await LogAsync(item, type, item.Quantity, save: false);
+        var ev = Log(item, type, item.Quantity, before);
         await db.SaveChangesAsync();
-        return item.ToDto();
+        return new(item.ToDto(), ev.Id);
     }
 
     /// <summary>Delete a mistaken entry (no usage/waste recorded).</summary>
@@ -336,13 +376,95 @@ public class InventoryService(HomeStackDbContext db, ICurrentUser me, TimeProvid
     private async Task<InventoryItem> LoadItem(int id) =>
         await Items.SingleOrDefaultAsync(i => i.Id == id) ?? throw new NotFoundException("Item not found");
 
-    private async Task LogAsync(InventoryItem item, InventoryEventType type, double qty, bool save = true)
+    /// <summary>Adds an event to the log (saved with the caller's next SaveChanges).</summary>
+    private InventoryEvent Log(InventoryItem item, InventoryEventType type, double qty, ItemSnapshot? before = null, decimal? value = null)
     {
-        db.Add(new InventoryEvent
+        var ev = new InventoryEvent
         {
             HouseholdId = Hid, ProductId = item.ProductId, ItemId = item.Id, UserId = me.UserId,
-            Type = type, Quantity = qty, Unit = item.Unit,
-        });
-        if (save) await db.SaveChangesAsync();
+            Type = type, Quantity = qty, Unit = item.Unit, Value = value, Snapshot = before?.ToJson(),
+            At = time.GetUtcNow().UtcDateTime,
+        };
+        db.Add(ev);
+        return ev;
+    }
+
+    // ---------- Waste stats ----------
+
+    /// <summary>
+    /// Throw-outs and uses per calendar month (server local time), oldest first, plus the products thrown out most.
+    /// Counts are events, not quantities, because units differ between products.
+    /// </summary>
+    public async Task<WasteStatsDto> GetWasteStatsAsync(int months)
+    {
+        months = Math.Clamp(months, 1, 24);
+        var zone = time.LocalTimeZone;
+        var today = time.Today();
+        var first = new DateOnly(today.Year, today.Month, 1).AddMonths(-(months - 1));
+        var fromUtc = TimeZoneInfo.ConvertTimeToUtc(first.ToDateTime(TimeOnly.MinValue, DateTimeKind.Unspecified), zone);
+
+        var events = await db.Set<InventoryEvent>()
+            .Where(e => e.HouseholdId == Hid && e.At >= fromUtc
+                && (e.Type == InventoryEventType.Wasted || e.Type == InventoryEventType.Used))
+            .Select(e => new { e.ProductId, e.Type, e.Value, e.At })
+            .ToListAsync();
+
+        string MonthOf(DateTime utc) => TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(utc, DateTimeKind.Utc), zone).ToString("yyyy-MM");
+        // Sum of the known values, or null when none of them had a price.
+        static decimal? Total(IEnumerable<decimal?> values)
+        {
+            var known = values.Where(v => v != null).Select(v => v!.Value).ToList();
+            return known.Count == 0 ? null : known.Sum();
+        }
+
+        var byMonth = events.ToLookup(e => MonthOf(e.At));
+        var monthList = Enumerable.Range(0, months).Select(i =>
+        {
+            var key = first.AddMonths(i).ToString("yyyy-MM");
+            var wasted = byMonth[key].Where(e => e.Type == InventoryEventType.Wasted).ToList();
+            var used = byMonth[key].Where(e => e.Type == InventoryEventType.Used).ToList();
+            return new WasteMonthDto(key, wasted.Count, used.Count, Total(wasted.Select(e => e.Value)), Total(used.Select(e => e.Value)));
+        }).ToList();
+
+        var top = events.Where(e => e.Type == InventoryEventType.Wasted)
+            .GroupBy(e => e.ProductId)
+            .Select(g => (ProductId: g.Key, Times: g.Count(), Value: Total(g.Select(e => e.Value))))
+            .OrderByDescending(x => x.Times).ThenByDescending(x => x.Value ?? 0)
+            .Take(5).ToList();
+        var ids = top.Select(x => x.ProductId).ToList();
+        var products = await Products.Where(p => ids.Contains(p.Id)).ToDictionaryAsync(p => p.Id);
+        var topList = top.Where(x => products.ContainsKey(x.ProductId))
+            .Select(x => new WastedProductDto(products[x.ProductId].ToDto(), x.Times, x.Value)).ToList();
+
+        return new WasteStatsDto(monthList, topList);
+    }
+}
+
+/// <summary>An item's state before an action, stored on the event so the action can be undone.</summary>
+internal sealed record ItemSnapshot(
+    int ProductId, int LocationId, double Quantity, string? Unit, DateOnly? PurchasedAt, DateOnly? ExpiresAt,
+    DateOnly? OpenedAt, DateOnly? FrozenAt, string? Notes, decimal? UnitPrice, DateTime CreatedAt)
+{
+    private static readonly System.Text.Json.JsonSerializerOptions Json = new(System.Text.Json.JsonSerializerDefaults.Web);
+
+    public static ItemSnapshot Of(InventoryItem i) => new(i.ProductId, i.LocationId, i.Quantity, i.Unit, i.PurchasedAt,
+        i.ExpiresAt, i.OpenedAt, i.FrozenAt, i.Notes, i.UnitPrice, i.CreatedAt);
+
+    public string ToJson() => System.Text.Json.JsonSerializer.Serialize(this, Json);
+    public static ItemSnapshot Parse(string json) => System.Text.Json.JsonSerializer.Deserialize<ItemSnapshot>(json, Json)!;
+
+    public void ApplyTo(InventoryItem i)
+    {
+        i.ProductId = ProductId;
+        i.LocationId = LocationId;
+        i.Quantity = Quantity;
+        i.Unit = Unit;
+        i.PurchasedAt = PurchasedAt;
+        i.ExpiresAt = ExpiresAt;
+        i.OpenedAt = OpenedAt;
+        i.FrozenAt = FrozenAt;
+        i.Notes = Notes;
+        i.UnitPrice = UnitPrice;
+        i.CreatedAt = CreatedAt;
     }
 }

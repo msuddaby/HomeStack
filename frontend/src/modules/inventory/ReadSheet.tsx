@@ -103,7 +103,8 @@ export function ReadSheet({ open, mode, onBack, onDone }: { open: boolean; mode:
         unit: r.unit || null,
         purchasedAt: purchasedAt || null,
         expiresAt: r.expiresAt || null,
-        notes: r.source.price != null ? `$${r.source.price.toFixed(2)}${result?.store ? ` at ${result.store}` : ""}` : null,
+        price: r.source.price,
+        notes: result?.store ? `From ${result.store}` : null,
       };
     });
     await addItems.mutateAsync(items);

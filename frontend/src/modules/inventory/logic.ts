@@ -35,6 +35,8 @@ export function itemStatus(item: Item, today = todayISO()): Status | null {
   return { label: shortDate(item.expiresAt), tone: "neutral" };
 }
 
+export const formatMoney = (n: number) => `$${n.toFixed(2)}`;
+
 export function formatQty(q: number, unit: string | null) {
   const n = Number.isInteger(q) ? String(q) : q.toFixed(2).replace(/\.?0+$/, "");
   return unit ? `${n} ${unit}` : n === "1" ? "" : `×${n}`;

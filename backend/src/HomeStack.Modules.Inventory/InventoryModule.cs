@@ -56,6 +56,7 @@ public class InventoryModule : IModule
             e.ToTable("inventory_events");
             e.Property(x => x.Type).HasConversion<string>().HasMaxLength(16);
             e.HasIndex(x => new { x.HouseholdId, x.At });
+            e.HasIndex(x => x.ItemId);
         });
     }
 
@@ -117,8 +118,9 @@ public class InventoryModule : IModule
         g.MapPost("/read/text", (ReadTextRequest req, GroceryReader reader, CancellationToken ct) => reader.ReadTextAsync(req.Text, ct))
             .Validate<ReadTextRequest>();
         g.MapPut("/items/{id:int}", (int id, UpdateItemRequest req, InventoryService s) => s.UpdateItemAsync(id, req)).Validate<UpdateItemRequest>();
-        g.MapPost("/items/{id:int}/consume", async (int id, ConsumeRequest req, InventoryService s) =>
-            await s.ConsumeAsync(id, req) is { } remaining ? Results.Ok(remaining) : Results.NoContent()).Validate<ConsumeRequest>();
+        g.MapPost("/items/{id:int}/consume", (int id, ConsumeRequest req, InventoryService s) => s.ConsumeAsync(id, req)).Validate<ConsumeRequest>();
+        g.MapPost("/events/{id:int}/undo", (int id, InventoryService s) => s.UndoAsync(id));
+        g.MapGet("/stats/waste", (int? months, InventoryService s) => s.GetWasteStatsAsync(months ?? 6));
         g.MapPost("/items/{id:int}/move", (int id, MoveRequest req, InventoryService s) => s.MoveAsync(id, req)).Validate<MoveRequest>();
         g.MapDelete("/items/{id:int}", async (int id, InventoryService s) => { await s.DeleteItemAsync(id); return Results.NoContent(); });
     }

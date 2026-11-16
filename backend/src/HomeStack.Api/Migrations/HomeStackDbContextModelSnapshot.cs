@@ -170,6 +170,9 @@ namespace HomeStack.Api.Migrations
                     b.Property<double>("Quantity")
                         .HasColumnType("REAL");
 
+                    b.Property<string>("Snapshot")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Type")
                         .IsRequired()
                         .HasMaxLength(16)
@@ -181,7 +184,12 @@ namespace HomeStack.Api.Migrations
                     b.Property<int>("UserId")
                         .HasColumnType("INTEGER");
 
+                    b.Property<decimal?>("Value")
+                        .HasColumnType("TEXT");
+
                     b.HasKey("Id");
+
+                    b.HasIndex("ItemId");
 
                     b.HasIndex("HouseholdId", "At");
 
@@ -225,6 +233,9 @@ namespace HomeStack.Api.Migrations
                         .HasColumnType("REAL");
 
                     b.Property<string>("Unit")
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal?>("UnitPrice")
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");

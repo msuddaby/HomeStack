@@ -24,6 +24,10 @@ public record CreateUserRequest(
 
 public record LoginRequest([Required] string Username, [Required] string Password);
 
+public record ChangePasswordRequest(
+    [Required] string CurrentPassword,
+    [Required, StringLength(200, MinimumLength = 8)] string NewPassword);
+
 public record UserDto(int Id, string Name, string Username);
 public record HouseholdDto(int Id, string Name);
 public record MeDto(UserDto User, HouseholdDto Household);
@@ -58,7 +62,7 @@ public static class AuthEndpoints
 
             await SignIn(http, user);
             return Results.Ok(ToMe(user, household));
-        }).Validate<SetupRequest>();
+        }).Validate<SetupRequest>().RequireRateLimiting(LoginRateLimit.Policy);
 
         auth.MapPost("/login", async (LoginRequest req, HomeStackDbContext db, IPasswordHasher<User> hasher, HttpContext http) =>
         {
@@ -69,7 +73,17 @@ public static class AuthEndpoints
 
             await SignIn(http, user);
             return Results.Ok(ToMe(user, user.Household!));
-        }).Validate<LoginRequest>();
+        }).Validate<LoginRequest>().RequireRateLimiting(LoginRateLimit.Policy);
+
+        auth.MapPost("/password", async (ChangePasswordRequest req, ICurrentUser me, HomeStackDbContext db, IPasswordHasher<User> hasher) =>
+        {
+            var user = await db.Users.SingleOrDefaultAsync(u => u.Id == me.UserId) ?? throw new NotFoundException("User not found");
+            if (hasher.VerifyHashedPassword(user, user.PasswordHash, req.CurrentPassword) == PasswordVerificationResult.Failed)
+                return Results.ValidationProblem(new Dictionary<string, string[]> { ["currentPassword"] = ["That isn't your current password."] });
+            user.PasswordHash = hasher.HashPassword(user, req.NewPassword);
+            await db.SaveChangesAsync();
+            return Results.NoContent();
+        }).Validate<ChangePasswordRequest>().RequireAuthorization().RequireRateLimiting(LoginRateLimit.Policy);
 
         auth.MapPost("/logout", async (HttpContext http) =>
         {
@@ -100,6 +114,17 @@ public static class AuthEndpoints
             await db.SaveChangesAsync();
             return Results.Created($"/api/household/users/{user.Id}", new UserDto(user.Id, user.Name, user.Username));
         }).Validate<CreateUserRequest>();
+
+        // Their history (who added or used what) stays; it stores the id without a foreign key.
+        household.MapDelete("/users/{id:int}", async (int id, ICurrentUser me, HomeStackDbContext db) =>
+        {
+            if (id == me.UserId) throw new BadRequestException("You can't remove yourself.");
+            var user = await db.Users.SingleOrDefaultAsync(u => u.Id == id && u.HouseholdId == me.HouseholdId)
+                ?? throw new NotFoundException("User not found");
+            db.Users.Remove(user);
+            await db.SaveChangesAsync();
+            return Results.NoContent();
+        });
     }
 
     private static User NewUser(int householdId, string name, string username, string password, IPasswordHasher<User> hasher)

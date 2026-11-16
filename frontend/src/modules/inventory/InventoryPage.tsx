@@ -1,6 +1,6 @@
 import { useDeferredValue, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router";
-import { Plus, Search, Refrigerator, Tags } from "lucide-react";
+import { Flame, Plus, Search, Refrigerator, Tags } from "lucide-react";
 import { PageHeader } from "@/core/layout";
 import { Button, cx, Empty, Input, Spinner } from "@/core/ui";
 import { useCategories, useDashboard, useItems, useLocations, type Item } from "./api";
@@ -30,7 +30,8 @@ export function InventoryPage() {
     <>
       <PageHeader title="Inventory" action={
         <div className="flex gap-2">
-          <Link to="/inventory/products"><Button variant="ghost"><Tags className="size-4" />Products</Button></Link>
+          <Link to="/inventory/waste"><Button variant="ghost" className="px-3" aria-label="Waste"><Flame className="size-4" /><span className="hidden sm:inline">Waste</span></Button></Link>
+          <Link to="/inventory/products"><Button variant="ghost" className="px-3" aria-label="Products"><Tags className="size-4" /><span className="hidden sm:inline">Products</span></Button></Link>
           <Button variant="primary" className="hidden md:inline-flex" onClick={() => setParam("add", "1")}><Plus className="size-4" />Add</Button>
         </div>
       } />

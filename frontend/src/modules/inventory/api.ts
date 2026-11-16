@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/core/api";
+import { useToast } from "@/core/toast";
 
 export type LocationKind = "pantry" | "fridge" | "freezer" | "other";
 export interface Location { id: number; name: string; kind: LocationKind; sort: number }
@@ -14,6 +15,14 @@ export interface Product {
 export interface Item {
   id: number; quantity: number; unit: string | null; purchasedAt: string | null; expiresAt: string | null;
   openedAt: string | null; frozenAt: string | null; notes: string | null; createdAt: string; product: Product; location: Location;
+  /** Value of what's left, when the item has a price. */
+  price: number | null;
+}
+/** Result of use / throw out / move. `item` is null when it's all gone; `eventId` undoes it. */
+export interface ItemAction { item: Item | null; eventId: number }
+export interface WasteStats {
+  months: { month: string; wasted: number; used: number; wastedValue: number | null; usedValue: number | null }[];
+  topWasted: { product: Product; times: number; value: number | null }[];
 }
 export interface Dashboard {
   expired: Item[]; expiringSoon: Item[]; freezeSoon: Item[];
@@ -28,6 +37,8 @@ export interface NewProduct {
 export interface AddItem {
   productId?: number; product?: NewProduct; locationId: number; quantity: number; unit?: string | null;
   purchasedAt?: string | null; expiresAt?: string | null; noExpiry?: boolean; openedAt?: string | null; frozenAt?: string | null; notes?: string | null;
+  /** What was paid for this quantity. */
+  price?: number | null;
 }
 export type UpdateItem = Omit<Required<AddItem>, "productId" | "product" | "noExpiry">;
 export interface BarcodeLookup {
@@ -94,10 +105,32 @@ export const useUpdateItem = () =>
   useInventoryMutation(({ id, ...v }: UpdateItem & { id: number }) => api<Item>(`/inventory/items/${id}`, { method: "PUT", body: v }));
 export const useConsume = () =>
   useInventoryMutation(({ id, ...v }: { id: number; quantity?: number; wasted?: boolean }) =>
-    api<Item | undefined>(`/inventory/items/${id}/consume`, { body: v }));
+    api<ItemAction>(`/inventory/items/${id}/consume`, { body: v }));
 export const useMove = () =>
   useInventoryMutation(({ id, ...v }: { id: number; locationId: number; adjustExpiry?: boolean }) =>
-    api<Item>(`/inventory/items/${id}/move`, { body: v }));
+    api<ItemAction>(`/inventory/items/${id}/move`, { body: v }));
+
+/**
+ * Shows "<message> · Undo" after a use, throw-out or move. Undo talks to the query client directly
+ * rather than a mutation hook, because the sheet that did the action has usually closed by then.
+ */
+export function useUndoToast() {
+  const qc = useQueryClient();
+  const show = useToast();
+  return (action: ItemAction, message: string) => show({
+    message,
+    action: {
+      label: "Undo",
+      onClick: async () => {
+        await api<Item>(`/inventory/events/${action.eventId}/undo`, { body: {} });
+        await Promise.all([qc.invalidateQueries({ queryKey: KEY }), qc.invalidateQueries({ queryKey: ["shopping"] })]);
+      },
+    },
+  });
+}
+
+export const useWasteStats = (months = 6) =>
+  useQuery({ queryKey: [...KEY, "waste", months], queryFn: () => api<WasteStats>(`/inventory/stats/waste?months=${months}`) });
 export const useDeleteItem = () => useInventoryMutation((id: number) => api(`/inventory/items/${id}`, { method: "DELETE" }));
 
 export const useSaveLocation = () =>

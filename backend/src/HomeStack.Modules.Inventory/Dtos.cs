@@ -34,7 +34,16 @@ public record ProductRequest(
 
 public record ItemDto(
     int Id, double Quantity, string? Unit, DateOnly? PurchasedAt, DateOnly? ExpiresAt, DateOnly? OpenedAt,
-    DateOnly? FrozenAt, string? Notes, DateTime CreatedAt, ProductDto Product, LocationDto Location);
+    DateOnly? FrozenAt, string? Notes, DateTime CreatedAt, ProductDto Product, LocationDto Location,
+    // Value of what's left (unit price × quantity), when known.
+    decimal? Price);
+
+/// <summary>Result of a one-tap action. <see cref="Item"/> is null when the item is all gone; <see cref="EventId"/> undoes it.</summary>
+public record ItemActionDto(ItemDto? Item, int EventId);
+
+public record WasteMonthDto(string Month, int Wasted, int Used, decimal? WastedValue, decimal? UsedValue);
+public record WastedProductDto(ProductDto Product, int Times, decimal? Value);
+public record WasteStatsDto(IReadOnlyList<WasteMonthDto> Months, IReadOnlyList<WastedProductDto> TopWasted);
 
 public record AddItemRequest(
     int? ProductId,
@@ -49,7 +58,9 @@ public record AddItemRequest(
     bool NoExpiry = false,
     DateOnly? OpenedAt = null,
     DateOnly? FrozenAt = null,
-    [StringLength(500)] string? Notes = null) : IValidatable
+    [StringLength(500)] string? Notes = null,
+    // What was paid for this quantity.
+    [Range(0, 100000)] decimal? Price = null) : IValidatable
 {
     public IEnumerable<ValidationResult> Validate()
     {
@@ -71,7 +82,9 @@ public record UpdateItemRequest(
     DateOnly? ExpiresAt,
     DateOnly? OpenedAt,
     DateOnly? FrozenAt,
-    [StringLength(500)] string? Notes);
+    [StringLength(500)] string? Notes,
+    // Value of the current quantity; null clears it.
+    [Range(0, 100000)] decimal? Price = null);
 
 public record ConsumeRequest(
     // Amount to remove; null removes the whole item.
@@ -116,7 +129,15 @@ public static class Mapping
     public static ProductDto ToDto(this Product p) => new(p.Id, p.Name, p.Brand, p.Category, p.Barcode, p.DefaultUnit,
         p.ImageUrl, p.PantryDays, p.FridgeDays, p.FreezerDays, p.MinQuantity);
     public static ItemDto ToDto(this InventoryItem i) => new(i.Id, i.Quantity, i.Unit, i.PurchasedAt, i.ExpiresAt,
-        i.OpenedAt, i.FrozenAt, i.Notes, i.CreatedAt, i.Product!.ToDto(), i.Location!.ToDto());
+        i.OpenedAt, i.FrozenAt, i.Notes, i.CreatedAt, i.Product!.ToDto(), i.Location!.ToDto(), ValueOf(i, i.Quantity));
+
+    /// <summary>Price of <paramref name="quantity"/> of the item, to the cent; null when it has no price.</summary>
+    public static decimal? ValueOf(InventoryItem i, double quantity) =>
+        i.UnitPrice is decimal u ? Math.Round(u * (decimal)quantity, 2) : null;
+
+    /// <summary>Unit price from a price paid for a quantity.</summary>
+    public static decimal? UnitPrice(decimal? price, double quantity) =>
+        price is decimal p && quantity > 0 ? p / (decimal)quantity : null;
 
     public static void Apply(this Product p, ProductRequest r)
     {

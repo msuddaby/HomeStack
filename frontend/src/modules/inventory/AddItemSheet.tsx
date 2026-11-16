@@ -25,11 +25,12 @@ interface Form {
   noExpiry: boolean;
   frozenAt: string;
   notes: string;
+  price: string;
 }
 
 const blank = (locationId: number | null): Form => ({
   name: "", product: null, category: "", categoryTouched: false, brand: "", barcode: "", imageUrl: "", locationId, quantity: "1", unit: "",
-  purchasedAt: todayISO(), expiresAt: "", expiryTouched: false, noExpiry: false, frozenAt: "", notes: "",
+  purchasedAt: todayISO(), expiresAt: "", expiryTouched: false, noExpiry: false, frozenAt: "", notes: "", price: "",
 });
 
 export function AddItemSheet({ open, onClose, defaultLocationId }: { open: boolean; onClose: () => void; defaultLocationId?: number }) {
@@ -120,6 +121,7 @@ export function AddItemSheet({ open, onClose, defaultLocationId }: { open: boole
       noExpiry: f.noExpiry || !f.expiresAt,
       frozenAt: isFreezer ? f.frozenAt || null : null,
       notes: f.notes || null,
+      price: f.price.trim() === "" ? null : Number(f.price),
     };
     await add.mutateAsync(body);
     if (!again) return onClose();
@@ -222,6 +224,9 @@ export function AddItemSheet({ open, onClose, defaultLocationId }: { open: boole
           {showMore && (
             <div className="grid grid-cols-2 gap-3">
               <Field label="Purchased"><Input type="date" value={f.purchasedAt} onChange={(e) => setF((p) => ({ ...p, purchasedAt: e.target.value, expiryTouched: false }))} /></Field>
+              <Field label="Price ($)" error={err?.field("price")} hint="Counts toward waste stats if it's thrown out">
+                <Input inputMode="decimal" placeholder="Optional" value={f.price} onChange={(e) => set("price", e.target.value)} />
+              </Field>
               {!f.product && <Field label="Brand"><Input value={f.brand} onChange={(e) => set("brand", e.target.value)} /></Field>}
               <label className="col-span-2 flex items-center gap-2 text-sm">
                 <input type="checkbox" checked={f.noExpiry} onChange={(e) => set("noExpiry", e.target.checked)} className="size-4 accent-[var(--color-accent)]" />

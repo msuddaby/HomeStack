@@ -48,6 +48,8 @@ public class InventoryItem
     public DateOnly? OpenedAt { get; set; }
     public DateOnly? FrozenAt { get; set; }
     public string? Notes { get; set; }
+    /// <summary>What one unit cost, so using or wasting part of an item carries its share of the price.</summary>
+    public decimal? UnitPrice { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
 
@@ -62,5 +64,9 @@ public class InventoryEvent
     public InventoryEventType Type { get; set; }
     public double Quantity { get; set; }
     public string? Unit { get; set; }
+    /// <summary>Price of the amount used or wasted, when the item had a price.</summary>
+    public decimal? Value { get; set; }
+    /// <summary>JSON copy of the item just before this event, so the action can be undone.</summary>
+    public string? Snapshot { get; set; }
     public DateTime At { get; set; } = DateTime.UtcNow;
 }
