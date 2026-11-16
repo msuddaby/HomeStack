@@ -29,7 +29,8 @@ export function Button({ variant = "secondary", busy, className, children, disab
 
 export function Field({ label, error, hint, children, className }: { label: string; error?: string; hint?: ReactNode; children: ReactNode; className?: string }) {
   return (
-    <label className={cx("block", className)}>
+    // min-w-0: in a grid, let the field shrink to its column instead of its content's natural width.
+    <label className={cx("block min-w-0", className)}>
       <span className="mb-1 block text-xs font-medium text-muted">{label}</span>
       {children}
       {error ? <span className="mt-1 block text-xs text-danger">{error}</span>

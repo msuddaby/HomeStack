@@ -43,4 +43,8 @@
 html, body { background: var(--color-bg); color: var(--color-text); }
 body { -webkit-tap-highlight-color: transparent; }
 input, select, textarea { font-size: 16px; } /* stops iOS zooming on focus */
+/* iOS Safari gives date inputs a fixed minimum width, which pushes two-column forms wider than the screen
+   (the sheet then scrolls sideways). Let them shrink like other inputs, and keep the value left-aligned. */
+input[type="date"] { -webkit-appearance: none; appearance: none; min-width: 0; display: block; }
+input[type="date"]::-webkit-date-and-time-value { text-align: left; }
 .pb-safe { padding-bottom: env(safe-area-inset-bottom); }
