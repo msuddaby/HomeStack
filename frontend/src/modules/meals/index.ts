@@ -1,6 +1,7 @@
 import { ChefHat } from "lucide-react";
 import type { WebModule } from "@/core/modules";
 import { MealsDashboardWidget } from "./DashboardWidget";
+import { KitchenPage } from "./KitchenPage";
 import { MealsLayout } from "./MealsLayout";
 import { PlanPage } from "./PlanPage";
 import { RecipeEditPage } from "./RecipeEditPage";
@@ -23,6 +24,8 @@ export const mealsModule: WebModule = {
       { path: "recipes/:id", Component: RecipePage },
       { path: "recipes/:id/edit", Component: RecipeEditPage },
     ],
-  }],
+  },
+  // Full screen, outside the meals tabs.
+  { path: "recipes/:id/kitchen", Component: KitchenPage }],
   DashboardWidget: MealsDashboardWidget,
 };

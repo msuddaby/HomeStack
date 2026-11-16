@@ -42,13 +42,18 @@ export function RecipePage() {
       </header>
 
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-        <Button variant="primary" onClick={() => setCooking(true)}><ChefHat className="size-4" />Cook</Button>
+        <Link to={`/meals/recipes/${r.id}/kitchen${servings ? `?servings=${serves}` : ""}`} className="contents">
+          <Button variant="primary"><ChefHat className="size-4" />Cook</Button>
+        </Link>
         <Button onClick={() => setPlanning(true)}><CalendarPlus className="size-4" />Plan</Button>
         <Button busy={toList.isPending} disabled={r.missingCount === 0 || toList.isSuccess} onClick={() => toList.mutate(r.id)}>
           <ShoppingCart className="size-4" />{toList.isSuccess ? `Added ${toList.data.added}` : `Missing ${r.missingCount}`}
         </Button>
         <Link to={`/meals/recipes/${r.id}/edit`} className="contents"><Button variant="ghost"><Pencil className="size-4" />Edit</Button></Link>
       </div>
+      <button className="-mt-3 self-start text-xs text-muted hover:text-text" onClick={() => setCooking(true)}>
+        Already cooked it? Take the ingredients out of inventory
+      </button>
       <ErrorText error={toList.error} />
 
       <section>
