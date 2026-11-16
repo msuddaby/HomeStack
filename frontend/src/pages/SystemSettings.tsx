@@ -198,9 +198,9 @@ export function AiCard() {
 
   return (
     <Card title={<span className="flex items-center gap-2"><Sparkles className="size-4" />AI</span>}
-      action={s.configured && <span className="text-xs font-medium text-accent">Connected</span>}>
+      action={s.configured && <span className="text-xs font-medium text-accent">On</span>}>
       <p className="mb-3 text-sm text-muted">
-        Reads receipts and typed lists into your inventory. Use any provider; the key stays on this server and is only sent to the service you pick.
+        Reads receipts and typed lists into your inventory, and suggests meals from what you have. Use any provider; the key stays on this server and is only sent to the service you pick.
       </p>
       <form className="flex flex-col gap-3" onSubmit={(e) => { e.preventDefault(); save.mutate({}); }}>
         <div className="flex flex-wrap gap-1.5">

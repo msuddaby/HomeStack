@@ -132,7 +132,7 @@ function IdeaCard({ idea }: { idea: Idea }) {
       <DraftDetails idea={idea} />
 
       {done?.planned ? (
-        <p className="mt-2 flex items-center gap-1.5 text-sm text-accent"><Check className="size-4" />On the plan for {dayLabel(done.planned).toLowerCase()}
+        <p className="mt-2 flex items-center gap-1.5 text-sm text-accent"><Check className="size-4" />On the plan for {dayLabel(done.planned).replace(/^(Tonight|Tomorrow)$/, (m) => m.toLowerCase())}
           {recipeLink && <Link to={`/meals/recipes/${recipeLink}`} className="ml-auto text-xs text-muted underline">Open recipe</Link>}</p>
       ) : (
         <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -150,7 +150,7 @@ function IdeaCard({ idea }: { idea: Idea }) {
 }
 
 /** "Plan my week": fills the free dinners in the next 7 days, reviewed before anything is saved. */
-export function WeekIdeasSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function WeekIdeasSheet({ open, onClose, onAdded }: { open: boolean; onClose: () => void; onAdded?: (dates: string[]) => void }) {
   const ai = useAiSettings();
   const accept = useAcceptIdea();
   const toList = usePlanToList();
@@ -178,6 +178,7 @@ export function WeekIdeasSheet({ open, onClose }: { open: boolean; onClose: () =
     try {
       for (const i of chosen) await accept.mutateAsync({ recipeId: i.recipeId, draft: i.recipeId ? null : i.draft, date: i.date });
       setSaved(chosen.length);
+      onAdded?.(chosen.flatMap((i) => (i.date ? [i.date] : [])));
     } catch (e) { setError(e); }
     finally { setBusy(false); }
   }

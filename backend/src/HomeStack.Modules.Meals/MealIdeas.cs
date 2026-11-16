@@ -60,10 +60,13 @@ public class MealIdeas(AiService ai, MealsService meals, InventoryService invent
         var reply = await ai.JsonAsync<Reply>(new AiPrompt(System, prompt, MaxTokens: 8192), ct);
 
         var savedById = saved.ToDictionary(s => s.Id);
+        var savedByTitle = saved.GroupBy(s => s.Title.Trim().ToLowerInvariant()).ToDictionary(g => g.Key, g => g.First());
         var ideas = new List<(ReplyIdea Raw, RecipeSummaryDto? Saved, RecipeRequest? Draft)>();
         foreach (var r in reply.Ideas ?? [])
         {
             if (r.RecipeId is int id && savedById.TryGetValue(id, out var s)) ideas.Add((r, s, null));
+            // A "new" recipe with the same name as a saved one is that recipe; don't save a duplicate.
+            else if (Clean(r.Title, 150) is { } t && savedByTitle.TryGetValue(t.ToLowerInvariant(), out var byTitle)) ideas.Add((r, byTitle, null));
             else if (ToDraft(r) is { } draft) ideas.Add((r, null, draft));
         }
         ideas = ideas.DistinctBy(i => (i.Saved?.Title ?? i.Draft!.Title).ToLowerInvariant()).Take(count).ToList();

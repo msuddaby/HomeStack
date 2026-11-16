@@ -208,7 +208,7 @@ function Review({ rows, result, purchasedAt, onDate, update, categories, locatio
               <input type="checkbox" checked={r.include} onChange={(e) => update(r.key, { include: e.target.checked })}
                 aria-label={`Include ${r.name}`} className="size-5 shrink-0 accent-[var(--color-accent)]" />
               <span className="text-lg" aria-hidden>{catById.get(r.category)?.emoji}</span>
-              <Input value={r.name} onChange={(e) => update(r.key, { name: e.target.value })} className="min-h-10 flex-1 font-medium" aria-label="Name" />
+              <Input value={r.name} onChange={(e) => update(r.key, { name: e.target.value })} className="min-h-10 min-w-0 flex-1 font-medium" aria-label="Name" />
             </div>
             {r.include && (
               <div className="mt-2 grid grid-cols-[4rem_4.5rem_1fr] gap-2">

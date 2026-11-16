@@ -82,6 +82,18 @@ public class MealIdeasTests
     }
 
     [Fact]
+    public async Task A_new_idea_named_like_a_saved_recipe_is_that_recipe()
+    {
+        var (app, c, tacosId) = await Start();
+        using var _ = app;
+        app.Ai.Bodies.Enqueue(Reply(new { ideas = new[] { NewIdea("beef Tacos ", "1 lb ground beef", "8 tortillas") } }));
+
+        var idea = Assert.Single((await (await c.Post("/api/meals/ideas", new { count = 2 })).Read<IdeasDto>()).Ideas);
+        Assert.Equal(tacosId, idea.RecipeId);
+        Assert.Null(idea.Draft);
+    }
+
+    [Fact]
     public async Task Week_plan_fills_free_dinners_in_order()
     {
         var (app, c, tacosId) = await Start();

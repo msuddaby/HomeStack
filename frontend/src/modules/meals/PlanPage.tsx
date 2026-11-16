@@ -88,7 +88,11 @@ export function PlanPage() {
 
       <AddMealSheet open={adding != null} date={adding ?? undefined} onClose={() => setAdding(null)} />
       <EntrySheet entry={selected} onClose={() => setSelected(null)} />
-      <WeekIdeasSheet open={planning} onClose={() => setPlanning(false)} />
+      <WeekIdeasSheet open={planning} onClose={() => setPlanning(false)} onAdded={(dates) => {
+        // Late in the week most new dinners land next week: show that week instead.
+        const later = dates.filter((d) => d > end).length;
+        if (later > dates.length - later) setStart(addDays(start, 7));
+      }} />
     </>
   );
 }

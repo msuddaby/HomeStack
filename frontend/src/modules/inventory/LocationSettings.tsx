@@ -24,8 +24,8 @@ export function LocationSettings() {
         await save.mutateAsync({ name, kind });
         setName("");
       }}>
-        <Input placeholder="New location" value={name} onChange={(e) => setName(e.target.value)} required />
-        <Select value={kind} onChange={(e) => setKind(e.target.value as LocationKind)} className="w-32 shrink-0">
+        <Input className="min-w-0 flex-1" placeholder="New location" value={name} onChange={(e) => setName(e.target.value)} required />
+        <Select value={kind} onChange={(e) => setKind(e.target.value as LocationKind)} className="w-28 shrink-0">
           {KINDS.map((k) => <option key={k} value={k}>{KIND_LABEL[k]}</option>)}
         </Select>
         <Button className="shrink-0 px-3" busy={save.isPending} aria-label="Add location"><Plus className="size-4" /></Button>
@@ -39,8 +39,8 @@ function LocationRow({ loc, onSave, onDelete }: { loc: Location; onSave: (v: { n
   const [name, setName] = useState(loc.name);
   return (
     <li className="flex gap-2">
-      <Input value={name} onChange={(e) => setName(e.target.value)} onBlur={() => name.trim() && name !== loc.name && onSave({ name, kind: loc.kind })} />
-      <Select value={loc.kind} onChange={(e) => onSave({ name, kind: e.target.value as LocationKind })} className="w-32 shrink-0">
+      <Input className="min-w-0 flex-1" value={name} onChange={(e) => setName(e.target.value)} onBlur={() => name.trim() && name !== loc.name && onSave({ name, kind: loc.kind })} />
+      <Select value={loc.kind} onChange={(e) => onSave({ name, kind: e.target.value as LocationKind })} className="w-28 shrink-0">
         {KINDS.map((k) => <option key={k} value={k}>{KIND_LABEL[k]}</option>)}
       </Select>
       <Button variant="ghost" className="shrink-0 px-3" onClick={onDelete} aria-label={`Delete ${loc.name}`}><Trash2 className="size-4" /></Button>

@@ -38,14 +38,19 @@ export function Field({ label, error, hint, children, className }: { label: stri
   );
 }
 
-const control = "w-full min-h-11 rounded-xl border border-border bg-surface px-3 text-text outline-none focus:border-accent focus:ring-2 focus:ring-accent/25";
+const controlBase = "min-h-11 rounded-xl border border-border bg-surface px-3 text-text outline-none focus:border-accent focus:ring-2 focus:ring-accent/25";
+
+/** Full width unless the caller sets its own width (Tailwind can't tell w-full and w-28 apart by order). */
+function control(className?: string) {
+  return cx(controlBase, !/(^|\s)(w|flex|basis)-/.test(className ?? "") && "w-full", className);
+}
 
 export function Input({ className, ...rest }: ComponentProps<"input">) {
-  return <input {...rest} className={cx(control, className)} />;
+  return <input {...rest} className={control(className)} />;
 }
 
 export function Select({ className, children, ...rest }: ComponentProps<"select">) {
-  return <select {...rest} className={cx(control, "appearance-auto", className)}>{children}</select>;
+  return <select {...rest} className={cx(control(className), "appearance-auto")}>{children}</select>;
 }
 
 export function Card({ title, action, children, className }: { title?: ReactNode; action?: ReactNode; children: ReactNode; className?: string }) {
