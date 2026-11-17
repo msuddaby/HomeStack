@@ -30,56 +30,50 @@ export function Button({ variant = "secondary", busy, className, children, disab
 
 /**
  * A button that opens the phone's camera / photo library. The real file input is stretched invisibly over the
- * whole button, so the tap lands on the input itself: no label forwarding and no click from code, which iPhones
- * (especially home-screen apps) don't reliably pass on. The input is only cleared after `onFile` finishes,
- * because iOS can discard a picked photo's data once it is.
+ * whole button, so the tap lands on the input itself. Don't change this to a hidden input clicked from code or a
+ * label: on iPhones (home-screen app, iOS 18) the tap then never reaches the input. Confirmed with an on-screen log.
+ * The input is only cleared after `onFiles` finishes, because iOS can discard a picked photo's data once it is,
+ * so callers should read or copy the files before returning.
  */
-export function PhotoButton({ onFile, busy, variant = "secondary", className, children, trace }: {
-  onFile: (file: File) => Promise<void>; busy?: boolean; variant?: Variant; className?: string; children: ReactNode;
-  /** TEMPORARY: logs each step, to find where picking stops on iPhones. */
-  trace?: (message: string) => void;
+export function PhotoButton({ onFiles, busy, multiple, camera, variant = "secondary", bare, className, children }: {
+  onFiles: (files: File[]) => Promise<void>; busy?: boolean; multiple?: boolean;
+  /** Open the camera straight away instead of offering the library. */
+  camera?: boolean;
+  variant?: Variant;
+  /** Skip the standard button look, for custom-styled tiles. */
+  bare?: boolean;
+  className?: string; children: ReactNode;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
-  // Kept current so the native listeners below always call the latest callbacks.
-  const latest = useRef({ onFile, trace });
-  latest.current = { onFile, trace };
+  // Kept current so the native listeners below always call the latest callback.
+  const latest = useRef(onFiles);
+  latest.current = onFiles;
 
-  // Native listeners rather than React's onChange: they log every event the phone actually sends, and a picked
-  // file is handled from either "change" or "input" (whichever arrives), once.
+  // iOS sends "input", "change" or both when a photo is picked; handle whichever arrives, once.
   useEffect(() => {
     const input = inputRef.current;
     if (!input) return;
     let handling = false;
-    const handle = async (e: Event) => {
-      const file = input.files?.[0];
-      latest.current.trace?.(`Event "${e.type}": ${input.files?.length ?? 0} file(s)`
-        + (file ? ` — ${file.name || "(no name)"}, ${file.type || "(no type)"}, ${Math.round(file.size / 1024)} KB` : ""));
-      if (!file || handling) return;
+    const handle = async () => {
+      const files = Array.from(input.files ?? []);
+      if (files.length === 0 || handling) return;
       handling = true;
-      try { await latest.current.onFile(file); } finally { input.value = ""; handling = false; }
+      try { await latest.current(files); } finally { input.value = ""; handling = false; }
     };
-    const onCancel = () => latest.current.trace?.('Event "cancel": picker closed without a photo');
-    const onTouch = (e: Event) => latest.current.trace?.(`Photo input got "${e.type}"`);
     input.addEventListener("change", handle);
     input.addEventListener("input", handle);
-    input.addEventListener("cancel", onCancel);
-    input.addEventListener("pointerdown", onTouch);
-    input.addEventListener("click", onTouch);
     return () => {
       input.removeEventListener("change", handle);
       input.removeEventListener("input", handle);
-      input.removeEventListener("cancel", onCancel);
-      input.removeEventListener("pointerdown", onTouch);
-      input.removeEventListener("click", onTouch);
     };
   }, []);
 
   return (
-    <span className={cx("relative", buttonBase, variants[variant], busy && "pointer-events-none opacity-50", className)}>
+    <span className={cx("relative", !bare && buttonBase, !bare && variants[variant], busy && "pointer-events-none opacity-50", className)}>
       {busy && <Loader2 className="size-4 animate-spin" />}
       {children}
-      <input ref={inputRef} type="file" accept="image/*" disabled={busy} aria-label="Choose a photo"
-        className="absolute inset-0 size-full cursor-pointer opacity-0" />
+      <input ref={inputRef} type="file" accept="image/*" multiple={multiple} capture={camera ? "environment" : undefined}
+        disabled={busy} aria-label="Choose a photo" className="absolute inset-0 size-full cursor-pointer opacity-0" />
     </span>
   );
 }

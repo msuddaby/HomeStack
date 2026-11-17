@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { ImagePlus } from "lucide-react";
 import { ApiError, errorMessage } from "@/core/api";
 import { shrinkImage } from "@/core/ai";
-import { PhotoTrace, usePhotoTrace } from "@/core/photoTrace";
 import { Button, ErrorText, Field, Input, PhotoButton, Select, Sheet } from "@/core/ui";
 import { useCategories, useProduct, useRemoveProductImage, useSaveProduct, useSetProductImage, type Product } from "./api";
 import { ProductThumb } from "./ProductThumb";
@@ -26,27 +25,22 @@ export function ProductSheet({ productId, onClose }: { productId: number | null;
   const removeImage = useRemoveProductImage();
   const [preparing, setPreparing] = useState(false);
   const [photoError, setPhotoError] = useState<string | null>(null);
-  const trace = usePhotoTrace();
   const [f, setF] = useState<Form | null>(null);
 
   // Fill the form once per product, so a photo change (which refetches the product) keeps unsaved edits.
   useEffect(() => { setF(null); save.reset(); setImage.reset(); removeImage.reset(); setPhotoError(null); }, [productId]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (product.data && !f) setF(toForm(product.data)); }, [product.data, f]);
 
-  const pickPhoto = async (file: File) => {
-    if (productId == null) return;
+  const pickPhoto = async ([file]: File[]) => {
+    if (productId == null || !file) return;
     setPhotoError(null);
     setPreparing(true);
     try {
-      trace.add("Shrinking…");
       // Phones take huge photos; the server keeps a ~400px copy, so don't upload more than it needs.
       const photo = await shrinkImage(file, 1024, 0.9);
-      trace.add(`Shrunk to ${Math.round(photo.size / 1024)} KB. Uploading…`);
       setPreparing(false);
       await setImage.mutateAsync({ id: productId, photo });
-      trace.add("Uploaded");
     } catch (e) {
-      trace.add(`Failed: ${errorMessage(e)}`);
       setPhotoError(errorMessage(e));
     } finally {
       setPreparing(false);
@@ -73,7 +67,7 @@ export function ProductSheet({ productId, onClose }: { productId: number | null;
           <div className="col-span-2 flex items-center gap-3">
             {product.data && <ProductThumb product={product.data} emoji={cat?.emoji} className="size-20 rounded-2xl" emojiClassName="text-4xl" lazy={false} />}
             <div className="flex flex-wrap gap-2">
-              <PhotoButton onFile={pickPhoto} busy={preparing || setImage.isPending} trace={trace.add}>
+              <PhotoButton onFiles={pickPhoto} busy={preparing || setImage.isPending}>
                 {!(preparing || setImage.isPending) && <ImagePlus className="size-4" />}
                 {preparing ? "Preparing photo…" : setImage.isPending ? "Uploading…" : product.data?.image ? "Change photo" : "Add photo"}
               </PhotoButton>
@@ -86,7 +80,6 @@ export function ProductSheet({ productId, onClose }: { productId: number | null;
             </div>
           </div>
           {photoError && <p className="col-span-2 -mt-1 text-sm text-danger">{photoError}</p>}
-          <div className="col-span-2"><PhotoTrace lines={trace.lines} /></div>
 
           <Field label="Name" className="col-span-2" error={err?.field("name")}><Input value={f.name} onChange={set("name")} required /></Field>
           <Field label="Category" className="col-span-2">

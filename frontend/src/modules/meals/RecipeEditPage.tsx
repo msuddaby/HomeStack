@@ -3,7 +3,6 @@ import { Link, useLocation, useNavigate, useParams } from "react-router";
 import { ArrowLeft, ImagePlus } from "lucide-react";
 import { ApiError, errorMessage } from "@/core/api";
 import { shrinkImage } from "@/core/ai";
-import { PhotoTrace, usePhotoTrace } from "@/core/photoTrace";
 import { useToast } from "@/core/toast";
 import { Button, ErrorText, Field, Input, PhotoButton, Spinner } from "@/core/ui";
 import { useRecipe, useRemoveRecipeImage, useSaveRecipe, useSetRecipeImage, type RecipeInput } from "./api";
@@ -38,7 +37,6 @@ export function RecipeEditPage() {
   const [photo, setPhoto] = useState<PhotoChange>({ kind: "none" });
   const [preparing, setPreparing] = useState(false);
   const [photoError, setPhotoError] = useState<string | null>(null);
-  const trace = usePhotoTrace();
 
   // Fill the form once. Coming back from the camera refetches the recipe, which mustn't wipe what's been typed.
   useEffect(() => {
@@ -54,18 +52,16 @@ export function RecipeEditPage() {
   const shown = photo.kind === "new" ? photo.preview : photo.kind === "remove" ? null
     : linkUnchanged && existing.data ? existing.data.image : f.imageUrl || null;
 
-  const pickPhoto = async (file: File) => {
+  const pickPhoto = async ([file]: File[]) => {
+    if (!file) return;
     setPhotoError(null);
     setPreparing(true);
     try {
-      trace.add("Shrinking…");
       // Phones take huge photos; the server keeps a ~1000px copy, so don't upload more than it needs.
       const blob = await shrinkImage(file, 1600, 0.88);
-      trace.add(`Shrunk to ${Math.round(blob.size / 1024)} KB. It uploads when you tap Save recipe.`);
       setPhoto({ kind: "new", blob, preview: URL.createObjectURL(blob) });
       setF((prev) => prev && { ...prev, imageUrl: "" });
     } catch (e) {
-      trace.add(`Failed: ${errorMessage(e)}`);
       setPhotoError(errorMessage(e));
     } finally {
       setPreparing(false);
@@ -108,7 +104,7 @@ export function RecipeEditPage() {
           ? <img src={shown} alt="" className="aspect-[4/3] w-28 shrink-0 rounded-xl bg-surface-2 object-cover" />
           : <span className="flex aspect-[4/3] w-28 shrink-0 items-center justify-center rounded-xl bg-surface-2 text-3xl">🍽️</span>}
         <div className="flex flex-wrap gap-2">
-          <PhotoButton onFile={pickPhoto} busy={preparing} trace={trace.add}>
+          <PhotoButton onFiles={pickPhoto} busy={preparing}>
             {!preparing && <ImagePlus className="size-4" />}
             {preparing ? "Preparing photo…" : shown ? "Change photo" : "Add photo"}
           </PhotoButton>
@@ -118,7 +114,6 @@ export function RecipeEditPage() {
         </div>
       </div>
       {photoError && <p className="-mt-2 text-sm text-danger">{photoError}</p>}
-      <PhotoTrace lines={trace.lines} />
       <div className="grid grid-cols-3 gap-3">
         <Field label="Serves"><Input inputMode="numeric" value={f.servings} onChange={set("servings")} /></Field>
         <Field label="Prep (min)"><Input inputMode="numeric" value={f.prepMinutes} onChange={set("prepMinutes")} /></Field>

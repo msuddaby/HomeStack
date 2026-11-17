@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
 import { Camera, Check, ImagePlus, Sparkles, X } from "lucide-react";
 import { shrinkImage, useAiSettings } from "@/core/ai";
 import { errorMessage } from "@/core/api";
 import { shortDate, todayISO } from "@/core/dates";
-import { Button, Chip, cx, ErrorText, Input, Select, Sheet, Spinner } from "@/core/ui";
+import { Button, Chip, cx, ErrorText, Input, PhotoButton, Select, Sheet, Spinner } from "@/core/ui";
 import { readReceipt, readText, useAddItems, useCategories, useLocations, type AddItem, type Category, type Location, type ReadItem, type ReadResult } from "./api";
 import { suggestExpiry } from "./logic";
 
@@ -22,15 +22,15 @@ export function ReadSheet({ open, mode, onBack, onDone }: { open: boolean; mode:
   const locations = useLocations().data ?? [];
   const addItems = useAddItems();
 
-  const [photos, setPhotos] = useState<{ file: File; url: string }[]>([]);
+  // Already shrunk: see addPhotos.
+  const [photos, setPhotos] = useState<{ blob: Blob; url: string }[]>([]);
+  const [preparing, setPreparing] = useState(false);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const [result, setResult] = useState<ReadResult | null>(null);
   const [rows, setRows] = useState<Row[]>([]);
   const [purchasedAt, setPurchasedAt] = useState(todayISO());
-  const cameraRef = useRef<HTMLInputElement>(null);
-  const libraryRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -48,9 +48,24 @@ export function ReadSheet({ open, mode, onBack, onDone }: { open: boolean; mode:
     return suggestExpiry(catById.get(r.category), loc.kind, bought, null, r.source.product ?? undefined) ?? "";
   }
 
-  function addPhotos(files: FileList | null) {
-    if (!files) return;
-    setPhotos((p) => [...p, ...Array.from(files).map((file) => ({ file, url: URL.createObjectURL(file) }))].slice(0, 4));
+  // Shrink right away, while the picker's files are still readable (iOS can discard them once the input is
+  // reset), and keep the small copies until "Read receipt".
+  async function addPhotos(files: File[]) {
+    setError(null);
+    setPreparing(true);
+    try {
+      const room = 4 - photos.length;
+      const added: { blob: Blob; url: string }[] = [];
+      for (const file of files.slice(0, room)) {
+        const blob = await shrinkImage(file);
+        added.push({ blob, url: URL.createObjectURL(blob) });
+      }
+      setPhotos((p) => [...p, ...added].slice(0, 4));
+    } catch (e) {
+      setError(e);
+    } finally {
+      setPreparing(false);
+    }
   }
 
   async function read() {
@@ -59,7 +74,7 @@ export function ReadSheet({ open, mode, onBack, onDone }: { open: boolean; mode:
       let r: ReadResult;
       if (mode === "receipt") {
         const form = new FormData();
-        for (const p of photos) form.append("images", await shrinkImage(p.file), "receipt.jpg");
+        for (const p of photos) form.append("images", p.blob, "receipt.jpg");
         r = await readReceipt(form);
       } else {
         r = await readText(text);
@@ -148,8 +163,6 @@ export function ReadSheet({ open, mode, onBack, onDone }: { open: boolean; mode:
           categories={categories} locations={locations} catById={catById} />
       ) : mode === "receipt" ? (
         <div className="flex flex-col gap-3">
-          <input ref={cameraRef} type="file" accept="image/*" capture="environment" hidden onChange={(e) => { addPhotos(e.target.files); e.target.value = ""; }} />
-          <input ref={libraryRef} type="file" accept="image/*" multiple hidden onChange={(e) => { addPhotos(e.target.files); e.target.value = ""; }} />
           {photos.length > 0 && (
             <div className="flex gap-2 overflow-x-auto pb-1">
               {photos.map((p, i) => (
@@ -161,16 +174,20 @@ export function ReadSheet({ open, mode, onBack, onDone }: { open: boolean; mode:
               ))}
             </div>
           )}
-          {photos.length < 4 && (
+          {preparing ? (
+            <div className="flex min-h-28 items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-border text-sm text-muted">
+              <Spinner />Preparing photo…
+            </div>
+          ) : photos.length < 4 && (
             <div className="grid grid-cols-2 gap-2">
-              <button type="button" onClick={() => cameraRef.current?.click()}
+              <PhotoButton bare camera onFiles={addPhotos}
                 className="flex min-h-28 flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-border text-sm font-medium">
                 <Camera className="size-7 text-accent" />{photos.length ? "Another photo" : "Take photo"}
-              </button>
-              <button type="button" onClick={() => libraryRef.current?.click()}
+              </PhotoButton>
+              <PhotoButton bare multiple onFiles={addPhotos}
                 className="flex min-h-28 flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-border text-sm font-medium">
                 <ImagePlus className="size-7 text-accent" />From photos
-              </button>
+              </PhotoButton>
             </div>
           )}
           <p className="text-xs text-muted">Flat, well lit, whole width in frame. Long receipt? Take one photo per section, top to bottom (up to 4).</p>
