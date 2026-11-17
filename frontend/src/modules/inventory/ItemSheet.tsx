@@ -7,6 +7,7 @@ import { Button, Chip, ErrorText, Field, Input, Select, Sheet } from "@/core/ui"
 import { useCategories, useConsume, useDeleteItem, useLocations, useMove, useUndoToast, useUpdateItem, type Item, type Location } from "./api";
 import { formatMoney, formatQty, itemStatus } from "./logic";
 import { ProductSheet } from "./ProductSheet";
+import { ProductThumb } from "./ProductThumb";
 
 export function ItemSheet({ item, onClose }: { item: Item | null; onClose: () => void }) {
   const [editing, setEditing] = useState(false);
@@ -60,9 +61,7 @@ function Actions({ item, onClose, onEdit, onEditProduct }: { item: Item; onClose
   return (
     <div className="flex flex-col gap-5">
       <div className="flex items-start gap-3">
-        {item.product.imageUrl
-          ? <img src={item.product.imageUrl} alt="" className="size-16 rounded-xl bg-white object-contain" />
-          : <span className="flex size-16 items-center justify-center rounded-xl bg-surface-2 text-3xl">{cat?.emoji}</span>}
+        <ProductThumb product={item.product} emoji={cat?.emoji} className="size-16 rounded-xl" emojiClassName="text-3xl" lazy={false} />
         <div className="min-w-0 flex-1 text-sm">
           <p className="text-muted">{[item.product.brand, cat?.label].filter(Boolean).join(" · ")}</p>
           <p className="mt-1 text-base font-semibold">{formatQty(item.quantity, item.unit) || "1"} · {item.location.name}</p>

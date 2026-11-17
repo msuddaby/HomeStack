@@ -1,10 +1,11 @@
 using HomeStack.Core;
+using HomeStack.Core.Images;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
 namespace HomeStack.Modules.Inventory;
 
-public class InventoryService(HomeStackDbContext db, ICurrentUser me, TimeProvider time, IOptions<InventoryOptions> options)
+public class InventoryService(HomeStackDbContext db, ICurrentUser me, TimeProvider time, IOptions<InventoryOptions> options, ImageService images)
 {
     private readonly InventoryOptions _opt = options.Value;
     private int Hid => me.HouseholdId;
@@ -66,8 +67,42 @@ public class InventoryService(HomeStackDbContext db, ICurrentUser me, TimeProvid
     {
         var p = await Products.SingleOrDefaultAsync(x => x.Id == id) ?? throw new NotFoundException("Product not found");
         await EnsureBarcodeFree(req.Barcode, id);
+        var oldUrl = p.ImageUrl;
         p.Apply(req);
+        // A new link replaces the local copy of the old one; the cache job fetches the new picture.
+        if (p.ImageUrl != oldUrl && p.ImageId is { } old)
+        {
+            p.ImageId = null;
+            await images.DeleteAsync(old);
+        }
         await db.SaveChangesAsync();
+        return p.ToDto();
+    }
+
+    public const int ImageEdge = 384;
+
+    /// <summary>Uses an uploaded photo as the product's picture, replacing any web image.</summary>
+    public async Task<ProductDto> SetProductImageAsync(int id, byte[] data, CancellationToken ct)
+    {
+        var p = await Products.SingleOrDefaultAsync(x => x.Id == id, ct) ?? throw new NotFoundException("Product not found");
+        var image = await images.SaveAsync(Hid, data, ImageEdge, ct: ct);
+        var old = p.ImageId;
+        p.ImageId = image.Id;
+        p.ImageUrl = null;
+        await db.SaveChangesAsync(ct);
+        await images.DeleteAsync(old, ct);
+        return p.ToDto();
+    }
+
+    /// <summary>Removes the product's picture, uploaded or from the web.</summary>
+    public async Task<ProductDto> RemoveProductImageAsync(int id)
+    {
+        var p = await Products.SingleOrDefaultAsync(x => x.Id == id) ?? throw new NotFoundException("Product not found");
+        var old = p.ImageId;
+        p.ImageId = null;
+        p.ImageUrl = null;
+        await db.SaveChangesAsync();
+        await images.DeleteAsync(old);
         return p.ToDto();
     }
 

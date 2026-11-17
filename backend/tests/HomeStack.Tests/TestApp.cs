@@ -27,6 +27,8 @@ public sealed class TestApp : WebApplicationFactory<Program>
     public FakeHttp Ntfy { get; } = new();
     /// <summary>Stands in for every AI service (OpenAI-compatible and Anthropic).</summary>
     public FakeHttp Ai { get; } = new();
+    /// <summary>Stands in for websites that product and recipe pictures are downloaded from.</summary>
+    public FakeHttp Web { get; } = new();
     // Anchored to the real date: cookie auth also uses this clock, and the HTTP client drops cookies that look expired.
     public FixedTime Time { get; } = new(new DateTimeOffset(DateTime.UtcNow.Date.AddHours(12), TimeSpan.Zero));
     public DateOnly Today => DateOnly.FromDateTime(Time.Now.UtcDateTime);
@@ -49,6 +51,7 @@ public sealed class TestApp : WebApplicationFactory<Program>
             s.AddHttpClient<NtfyClient>().ConfigurePrimaryHttpMessageHandler(() => Ntfy);
             s.AddHttpClient<HomeStack.Core.Ai.OpenAiCompatibleProvider>().ConfigurePrimaryHttpMessageHandler(() => Ai);
             s.AddHttpClient<HomeStack.Core.Ai.AnthropicProvider>().ConfigurePrimaryHttpMessageHandler(() => Ai);
+            s.AddHttpClient<HomeStack.Core.Images.ImageFetcher>().ConfigurePrimaryHttpMessageHandler(() => Web);
         });
     }
 
@@ -78,11 +81,15 @@ public sealed class FakeHttp : HttpMessageHandler
     public HttpStatusCode Status { get; set; } = HttpStatusCode.OK;
     /// <summary>Response bodies to hand out in order; the last one repeats. Default "{}".</summary>
     public Queue<string> Bodies { get; } = new();
+    /// <summary>When set, successful responses carry these bytes instead of <see cref="Bodies"/>.</summary>
+    public byte[]? Binary { get; set; }
     private string _last = "{}";
 
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
     {
         Requests.Add((request, request.Content is null ? "" : await request.Content.ReadAsStringAsync(ct)));
+        if (Binary is not null && Status == HttpStatusCode.OK)
+            return new HttpResponseMessage(Status) { Content = new ByteArrayContent(Binary) };
         if (Bodies.Count > 0) _last = Bodies.Dequeue();
         return new HttpResponseMessage(Status) { Content = new StringContent(Status == HttpStatusCode.OK ? _last : "{\"error\":{\"message\":\"nope\"}}") };
     }

@@ -1,5 +1,6 @@
 import { Chip } from "@/core/ui";
 import type { Category, Item } from "./api";
+import { ProductThumb } from "./ProductThumb";
 import { formatQty, itemStatus } from "./logic";
 
 export function ItemRow({ item, category, showLocation, onClick, action }: {
@@ -10,9 +11,7 @@ export function ItemRow({ item, category, showLocation, onClick, action }: {
   return (
     <li className="flex items-center gap-2">
       <button onClick={onClick} className="flex min-w-0 flex-1 items-center gap-3 rounded-xl py-2 text-left hover:bg-surface-2 sm:px-2">
-        {item.product.imageUrl
-          ? <img src={item.product.imageUrl} alt="" className="size-10 shrink-0 rounded-lg bg-white object-contain" loading="lazy" />
-          : <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-surface-2 text-xl">{category?.emoji ?? "📦"}</span>}
+        <ProductThumb product={item.product} emoji={category?.emoji} className="size-10 rounded-lg" />
         <div className="min-w-0 flex-1">
           <p className="truncate font-medium">
             {item.product.name}

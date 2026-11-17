@@ -54,7 +54,7 @@ public class UnitsTests
 
 public class ProductMatcherTests
 {
-    private static ProductDto P(int id, string name) => new(id, name, null, "other", null, null, null, null, null, null, null);
+    private static ProductDto P(int id, string name) => new(id, name, null, "other", null, null, null, null, null, null, null, null);
     private static readonly List<ProductDto> Products =
         [P(1, "Eggs"), P(2, "2% Milk"), P(3, "Chicken thighs"), P(4, "Peanut butter"), P(5, "Butter"), P(6, "Tomatoes"), P(7, "Sour cream")];
 

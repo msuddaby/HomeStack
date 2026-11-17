@@ -36,10 +36,11 @@ public record IngredientDto(
 
 public record RecipeDto(
     int Id, string Title, string? Description, int Servings, int? PrepMinutes, int? CookMinutes, string? SourceUrl, string? ImageUrl,
-    List<string> Steps, List<string> Tags, string? Notes, List<IngredientDto> Ingredients, int MissingCount, DateTime UpdatedAt);
+    // What to show: the local copy when there is one, else ImageUrl.
+    string? Image, List<string> Steps, List<string> Tags, string? Notes, List<IngredientDto> Ingredients, int MissingCount, DateTime UpdatedAt);
 
 public record RecipeSummaryDto(
-    int Id, string Title, string? ImageUrl, List<string> Tags, int? TotalMinutes, int Servings,
+    int Id, string Title, string? Image, List<string> Tags, int? TotalMinutes, int Servings,
     int IngredientCount, int MissingCount, List<string> Missing, List<ExpiringUse> UsesExpiring);
 
 public record ExpiringUse(string Name, DateOnly ExpiresAt);
@@ -84,7 +85,7 @@ public record PlanRequest(
 }
 
 public record PlanEntryDto(
-    int Id, DateOnly Date, MealSlot Slot, int? RecipeId, string Title, string? ImageUrl, int? Servings, string? Note,
+    int Id, DateOnly Date, MealSlot Slot, int? RecipeId, string Title, string? Image, int? Servings, string? Note,
     DateTime? CookedAt, int MissingCount);
 
 public record PlanShoppingRequest(DateOnly From, DateOnly To);

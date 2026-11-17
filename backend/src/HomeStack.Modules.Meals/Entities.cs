@@ -13,6 +13,8 @@ public class Recipe
     public int? CookMinutes { get; set; }
     public string? SourceUrl { get; set; }
     public string? ImageUrl { get; set; }
+    /// <summary>Local copy of <see cref="ImageUrl"/> (a core StoredImage), once the cache job has fetched it.</summary>
+    public Guid? ImageId { get; set; }
     /// <summary>Lines starting with "## " are section headings.</summary>
     public List<string> Steps { get; set; } = [];
     public List<string> Tags { get; set; } = [];

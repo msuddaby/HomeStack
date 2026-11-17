@@ -19,6 +19,7 @@ public class InventoryModule : IModule
         services.AddScoped<InventoryService>();
         services.AddScoped<GroceryReader>();
         services.AddScoped<HomeStack.Core.Notifications.IDigestSource, InventoryDigest>();
+        services.AddScoped<HomeStack.Core.Images.IRemoteImageSource, ProductImages>();
         services.AddHttpClient<OpenFoodFactsClient>(c =>
         {
             c.BaseAddress = new Uri(configuration["Inventory:OpenFoodFactsUrl"] ?? "https://world.openfoodfacts.org/");
@@ -85,6 +86,9 @@ public class InventoryModule : IModule
         g.MapGet("/products/{id:int}", (int id, InventoryService s) => s.GetProductAsync(id));
         g.MapPost("/products", (ProductRequest req, InventoryService s) => s.CreateProductAsync(req)).Validate<ProductRequest>();
         g.MapPut("/products/{id:int}", (int id, ProductRequest req, InventoryService s) => s.UpdateProductAsync(id, req)).Validate<ProductRequest>();
+        g.MapPost("/products/{id:int}/image", async (int id, IFormFile? image, InventoryService s, CancellationToken ct) =>
+            await s.SetProductImageAsync(id, await HomeStack.Core.Images.ImageService.ReadUploadAsync(image, ct), ct)).DisableAntiforgery();
+        g.MapDelete("/products/{id:int}/image", (int id, InventoryService s) => s.RemoveProductImageAsync(id));
         g.MapGet("/barcode/{code}", async (string code, InventoryService s, OpenFoodFactsClient off, CancellationToken ct) =>
         {
             if (await s.FindByBarcodeAsync(code) is { } local) return new BarcodeLookupDto("local", local, null);

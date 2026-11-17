@@ -1,7 +1,10 @@
-import { useEffect, useState } from "react";
-import { ApiError } from "@/core/api";
+import { useEffect, useRef, useState } from "react";
+import { ImagePlus } from "lucide-react";
+import { ApiError, errorMessage } from "@/core/api";
+import { shrinkImage } from "@/core/ai";
 import { Button, ErrorText, Field, Input, Select, Sheet } from "@/core/ui";
-import { useCategories, useProduct, useSaveProduct, type Product } from "./api";
+import { useCategories, useProduct, useRemoveProductImage, useSaveProduct, useSetProductImage, type Product } from "./api";
+import { ProductThumb } from "./ProductThumb";
 
 type Form = Record<"name" | "brand" | "category" | "barcode" | "defaultUnit" | "minQuantity" | "pantryDays" | "fridgeDays" | "freezerDays", string>;
 
@@ -13,14 +16,31 @@ const toForm = (p: Product): Form => ({
 
 const num = (s: string) => (s.trim() === "" ? null : Number(s));
 
-/** Edit what a product *is*: name, category, barcode, low-stock minimum and shelf-life overrides. */
+/** Edit what a product *is*: photo, name, category, barcode, low-stock minimum and shelf-life overrides. */
 export function ProductSheet({ productId, onClose }: { productId: number | null; onClose: () => void }) {
   const product = useProduct(productId);
   const categories = useCategories().data ?? [];
   const save = useSaveProduct();
+  const setImage = useSetProductImage();
+  const removeImage = useRemoveProductImage();
+  const fileInput = useRef<HTMLInputElement>(null);
+  const [photoError, setPhotoError] = useState<string | null>(null);
   const [f, setF] = useState<Form | null>(null);
 
-  useEffect(() => { setF(product.data ? toForm(product.data) : null); save.reset(); }, [product.data, productId]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Fill the form once per product, so a photo change (which refetches the product) keeps unsaved edits.
+  useEffect(() => { setF(null); save.reset(); setImage.reset(); removeImage.reset(); setPhotoError(null); }, [productId]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (product.data && !f) setF(toForm(product.data)); }, [product.data, f]);
+
+  const pickPhoto = async (file: File | undefined) => {
+    if (!file || productId == null) return;
+    setPhotoError(null);
+    try {
+      // Phones take huge photos; the server keeps a ~400px copy, so don't upload more than it needs.
+      await setImage.mutateAsync({ id: productId, photo: await shrinkImage(file, 1024, 0.9) });
+    } catch (e) {
+      setPhotoError(errorMessage(e));
+    }
+  };
 
   const cat = categories.find((c) => c.id === f?.category);
   const err = save.error instanceof ApiError ? save.error : undefined;
@@ -39,6 +59,24 @@ export function ProductSheet({ productId, onClose }: { productId: number | null;
           });
           onClose();
         }}>
+          <div className="col-span-2 flex items-center gap-3">
+            {product.data && <ProductThumb product={product.data} emoji={cat?.emoji} className="size-20 rounded-2xl" emojiClassName="text-4xl" lazy={false} />}
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" onClick={() => fileInput.current?.click()} busy={setImage.isPending}>
+                <ImagePlus className="size-4" />{product.data?.image ? "Change photo" : "Add photo"}
+              </Button>
+              {product.data?.image && (
+                <Button type="button" variant="ghost" busy={removeImage.isPending}
+                  onClick={() => { setPhotoError(null); removeImage.mutate(productId!, { onError: (e) => setPhotoError(errorMessage(e)) }); }}>
+                  Remove
+                </Button>
+              )}
+            </div>
+            <input ref={fileInput} type="file" accept="image/*" hidden
+              onChange={(e) => { void pickPhoto(e.target.files?.[0]); e.target.value = ""; }} />
+          </div>
+          {photoError && <p className="col-span-2 -mt-1 text-sm text-danger">{photoError}</p>}
+
           <Field label="Name" className="col-span-2" error={err?.field("name")}><Input value={f.name} onChange={set("name")} required /></Field>
           <Field label="Category" className="col-span-2">
             <Select value={f.category} onChange={set("category")}>{categories.map((c) => <option key={c.id} value={c.id}>{c.emoji} {c.label}</option>)}</Select>

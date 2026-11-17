@@ -1,11 +1,12 @@
 using HomeStack.Core;
+using HomeStack.Core.Images;
 using HomeStack.Modules.Inventory;
 using HomeStack.Modules.Shopping;
 using Microsoft.EntityFrameworkCore;
 
 namespace HomeStack.Modules.Meals;
 
-public class MealsService(HomeStackDbContext db, ICurrentUser me, TimeProvider time, InventoryService inventory, ShoppingService shopping)
+public class MealsService(HomeStackDbContext db, ICurrentUser me, TimeProvider time, InventoryService inventory, ShoppingService shopping, ImageService images)
 {
     /// <summary>Ingredients in stock that expire within this many days count as "uses up expiring food".</summary>
     private const int ExpiringDays = 3;
@@ -48,7 +49,7 @@ public class MealsService(HomeStackDbContext db, ICurrentUser me, TimeProvider t
         var expiring = ings.Where(i => i.InStock && !i.Staple && i.SoonestExpiry is { } e && e <= today.AddDays(ExpiringDays))
             .Select(i => new ExpiringUse(i.ProductName ?? i.Name, i.SoonestExpiry!.Value)).OrderBy(e => e.ExpiresAt).ToList();
         int? total = r.PrepMinutes is null && r.CookMinutes is null ? null : (r.PrepMinutes ?? 0) + (r.CookMinutes ?? 0);
-        return new RecipeSummaryDto(r.Id, r.Title, r.ImageUrl, r.Tags, total, r.Servings, ings.Count, missing.Count, missing, expiring);
+        return new RecipeSummaryDto(r.Id, r.Title, StoredImage.Src(r.ImageId, r.ImageUrl), r.Tags, total, r.Servings, ings.Count, missing.Count, missing, expiring);
     }
 
     // ---------- Recipes ----------
@@ -133,6 +134,7 @@ public class MealsService(HomeStackDbContext db, ICurrentUser me, TimeProvider t
         }
         db.Remove(r);
         await db.SaveChangesAsync();
+        await images.DeleteAsync(r.ImageId);
     }
 
     public async Task<RecipeDto> LinkIngredientAsync(int recipeId, int ingredientId, LinkRequest req)
@@ -155,7 +157,14 @@ public class MealsService(HomeStackDbContext db, ICurrentUser me, TimeProvider t
         r.PrepMinutes = req.PrepMinutes;
         r.CookMinutes = req.CookMinutes;
         r.SourceUrl = Blank(req.SourceUrl);
+        var oldUrl = r.ImageUrl;
         r.ImageUrl = Blank(req.ImageUrl);
+        // A new link replaces the local copy of the old one; the cache job fetches the new picture.
+        if (r.ImageUrl != oldUrl && r.ImageId is { } old)
+        {
+            r.ImageId = null;
+            await images.DeleteAsync(old);
+        }
         r.Steps = req.Steps.Select(s => s.Trim()).Where(s => s.Length > 0).ToList();
         r.Tags = req.Tags.Select(t => t.Trim().ToLowerInvariant()).Where(t => t.Length > 0).Distinct().ToList();
         r.Notes = Blank(req.Notes);
@@ -323,11 +332,11 @@ public class MealsService(HomeStackDbContext db, ICurrentUser me, TimeProvider t
     {
         var ings = r.Ingredients.OrderBy(i => i.Sort).Select(i => Evaluate(i, pantry)).ToList();
         return new RecipeDto(r.Id, r.Title, r.Description, r.Servings, r.PrepMinutes, r.CookMinutes, r.SourceUrl, r.ImageUrl,
-            r.Steps, r.Tags, r.Notes, ings, ings.Count(IsMissing), r.UpdatedAt);
+            StoredImage.Src(r.ImageId, r.ImageUrl), r.Steps, r.Tags, r.Notes, ings, ings.Count(IsMissing), r.UpdatedAt);
     }
 
     private static PlanEntryDto ToDto(MealPlanEntry e, Pantry pantry) => new(
-        e.Id, e.Date, e.Slot, e.RecipeId, e.Recipe?.Title ?? e.Title ?? "Meal", e.Recipe?.ImageUrl, e.Servings, e.Note, e.CookedAt,
+        e.Id, e.Date, e.Slot, e.RecipeId, e.Recipe?.Title ?? e.Title ?? "Meal", e.Recipe is { } r ? StoredImage.Src(r.ImageId, r.ImageUrl) : null, e.Servings, e.Note, e.CookedAt,
         e.Recipe?.Ingredients.Select(i => Evaluate(i, pantry)).Count(IsMissing) ?? 0);
 
     private static string? Blank(string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();

@@ -30,7 +30,7 @@ export function RecipePage() {
   return (
     <article className="flex flex-col gap-5">
       <Link to="/meals/recipes" className="inline-flex items-center gap-1 text-sm text-muted"><ArrowLeft className="size-4" />Recipes</Link>
-      {r.imageUrl && <img src={r.imageUrl} alt="" className="aspect-[16/9] w-full rounded-3xl object-cover" />}
+      {r.image && <img src={r.image} alt="" className="aspect-[16/9] w-full rounded-3xl object-cover" />}
       <header>
         <h1 className="text-2xl font-bold leading-tight">{r.title}</h1>
         {r.description && <p className="mt-1 text-sm text-muted">{r.description}</p>}

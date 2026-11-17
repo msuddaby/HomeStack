@@ -105,6 +105,44 @@ namespace HomeStack.Api.Migrations
                     b.ToTable("users", (string)null);
                 });
 
+            modelBuilder.Entity("HomeStack.Core.Images.StoredImage", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<byte[]>("Data")
+                        .IsRequired()
+                        .HasColumnType("BLOB");
+
+                    b.Property<int>("Height")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("HouseholdId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("SourceUrl")
+                        .HasMaxLength(2000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Width")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("HouseholdId");
+
+                    b.ToTable("images", (string)null);
+                });
+
             modelBuilder.Entity("HomeStack.Core.Notifications.NotificationSettings", b =>
                 {
                     b.Property<int>("HouseholdId")
@@ -310,6 +348,9 @@ namespace HomeStack.Api.Migrations
                     b.Property<int>("HouseholdId")
                         .HasColumnType("INTEGER");
 
+                    b.Property<Guid?>("ImageId")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("ImageUrl")
                         .HasColumnType("TEXT");
 
@@ -396,6 +437,9 @@ namespace HomeStack.Api.Migrations
 
                     b.Property<int>("HouseholdId")
                         .HasColumnType("INTEGER");
+
+                    b.Property<Guid?>("ImageId")
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("ImageUrl")
                         .HasColumnType("TEXT");
@@ -561,6 +605,15 @@ namespace HomeStack.Api.Migrations
                         .IsRequired();
 
                     b.Navigation("Household");
+                });
+
+            modelBuilder.Entity("HomeStack.Core.Images.StoredImage", b =>
+                {
+                    b.HasOne("HomeStack.Core.Data.Household", null)
+                        .WithMany()
+                        .HasForeignKey("HouseholdId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("HomeStack.Core.Notifications.NotificationSettings", b =>

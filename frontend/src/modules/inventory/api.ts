@@ -11,6 +11,8 @@ export interface Category {
 export interface Product {
   id: number; name: string; brand: string | null; category: string; barcode: string | null; defaultUnit: string | null;
   imageUrl: string | null; pantryDays: number | null; fridgeDays: number | null; freezerDays: number | null; minQuantity: number | null;
+  /** What to show: the server's small copy when it has one, otherwise `imageUrl`. */
+  image: string | null;
 }
 export interface Item {
   id: number; quantity: number; unit: string | null; purchasedAt: string | null; expiresAt: string | null;
@@ -85,6 +87,16 @@ export const useProduct = (id: number | null) =>
   useQuery({ queryKey: [...KEY, "product", id], queryFn: () => api<Product>(`/inventory/products/${id}`), enabled: id != null });
 export const useSaveProduct = () =>
   useInventoryMutation(({ id, ...v }: NewProduct & { id: number }) => api<Product>(`/inventory/products/${id}`, { method: "PUT", body: v }));
+
+/** Uses a photo (already shrunk on the phone) as the product's picture. */
+export const useSetProductImage = () =>
+  useInventoryMutation(({ id, photo }: { id: number; photo: Blob }) => {
+    const form = new FormData();
+    form.append("image", photo, "photo.jpg");
+    return api<Product>(`/inventory/products/${id}/image`, { body: form });
+  });
+export const useRemoveProductImage = () =>
+  useInventoryMutation((id: number) => api<Product>(`/inventory/products/${id}/image`, { method: "DELETE" }));
 
 export const lookupBarcode = (code: string) => api<BarcodeLookup>(`/inventory/barcode/${encodeURIComponent(code)}`);
 

@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using HomeStack.Core;
+using HomeStack.Core.Images;
 
 namespace HomeStack.Modules.Inventory;
 
@@ -11,7 +12,9 @@ public record LocationRequest(
 
 public record ProductDto(
     int Id, string Name, string? Brand, string Category, string? Barcode, string? DefaultUnit, string? ImageUrl,
-    int? PantryDays, int? FridgeDays, int? FreezerDays, double? MinQuantity);
+    int? PantryDays, int? FridgeDays, int? FreezerDays, double? MinQuantity,
+    // What to show: the local copy when there is one, else ImageUrl.
+    string? Image);
 
 public record ProductRequest(
     [Required, StringLength(120, MinimumLength = 1)] string Name,
@@ -127,7 +130,7 @@ public static class Mapping
 {
     public static LocationDto ToDto(this Location l) => new(l.Id, l.Name, l.Kind, l.Sort);
     public static ProductDto ToDto(this Product p) => new(p.Id, p.Name, p.Brand, p.Category, p.Barcode, p.DefaultUnit,
-        p.ImageUrl, p.PantryDays, p.FridgeDays, p.FreezerDays, p.MinQuantity);
+        p.ImageUrl, p.PantryDays, p.FridgeDays, p.FreezerDays, p.MinQuantity, StoredImage.Src(p.ImageId, p.ImageUrl));
     public static ItemDto ToDto(this InventoryItem i) => new(i.Id, i.Quantity, i.Unit, i.PurchasedAt, i.ExpiresAt,
         i.OpenedAt, i.FrozenAt, i.Notes, i.CreatedAt, i.Product!.ToDto(), i.Location!.ToDto(), ValueOf(i, i.Quantity));
 

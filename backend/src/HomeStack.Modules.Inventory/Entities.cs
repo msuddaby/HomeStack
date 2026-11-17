@@ -23,7 +23,10 @@ public class Product
     public string Category { get; set; } = "other";
     public string? Barcode { get; set; }
     public string? DefaultUnit { get; set; }
+    /// <summary>Picture on the web (e.g. from Open Food Facts). Null when the picture was uploaded.</summary>
     public string? ImageUrl { get; set; }
+    /// <summary>Local copy (a core StoredImage): an upload, or the cached <see cref="ImageUrl"/>.</summary>
+    public Guid? ImageId { get; set; }
     public int? PantryDays { get; set; }
     public int? FridgeDays { get; set; }
     public int? FreezerDays { get; set; }

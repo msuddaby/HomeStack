@@ -12,10 +12,12 @@ export interface Ingredient {
 export interface Recipe {
   id: number; title: string; description: string | null; servings: number; prepMinutes: number | null; cookMinutes: number | null;
   sourceUrl: string | null; imageUrl: string | null; steps: string[]; tags: string[]; notes: string | null;
+  /** What to show: the server's small copy when it has one, otherwise `imageUrl`. */
+  image: string | null;
   ingredients: Ingredient[]; missingCount: number; updatedAt: string;
 }
 export interface RecipeSummary {
-  id: number; title: string; imageUrl: string | null; tags: string[]; totalMinutes: number | null; servings: number;
+  id: number; title: string; image: string | null; tags: string[]; totalMinutes: number | null; servings: number;
   ingredientCount: number; missingCount: number; missing: string[]; usesExpiring: { name: string; expiresAt: string }[];
 }
 export interface RecipeInput {
@@ -23,7 +25,7 @@ export interface RecipeInput {
   sourceUrl: string | null; imageUrl: string | null; ingredients: string[]; steps: string[]; tags: string[]; notes: string | null;
 }
 export interface PlanEntry {
-  id: number; date: string; slot: MealSlot; recipeId: number | null; title: string; imageUrl: string | null;
+  id: number; date: string; slot: MealSlot; recipeId: number | null; title: string; image: string | null;
   servings: number | null; note: string | null; cookedAt: string | null; missingCount: number;
 }
 export interface PlanInput { date: string; slot: MealSlot; recipeId?: number | null; title?: string | null; servings?: number | null; note?: string | null }

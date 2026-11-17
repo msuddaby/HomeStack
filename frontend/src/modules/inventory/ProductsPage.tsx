@@ -5,6 +5,7 @@ import { PageHeader } from "@/core/layout";
 import { Chip, Empty, Input, Spinner } from "@/core/ui";
 import { useCategories, useProducts } from "./api";
 import { ProductSheet } from "./ProductSheet";
+import { ProductThumb } from "./ProductThumb";
 
 /** Everything you've ever added, so you can set minimums and shelf lives even when it's out of stock. */
 export function ProductsPage() {
@@ -28,7 +29,7 @@ export function ProductsPage() {
           {products.data.map((p) => (
             <li key={p.id}>
               <button onClick={() => setEditing(p.id)} className="flex w-full items-center gap-3 py-2.5 text-left hover:bg-surface-2 sm:px-2">
-                <span className="flex size-9 items-center justify-center rounded-lg bg-surface-2 text-lg">{catById.get(p.category)?.emoji}</span>
+                <ProductThumb product={p} emoji={catById.get(p.category)?.emoji} className="size-9 rounded-lg" emojiClassName="text-lg" />
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-medium">{p.name}</p>
                   <p className="truncate text-xs text-muted">{[p.brand, catById.get(p.category)?.label].filter(Boolean).join(" · ")}</p>

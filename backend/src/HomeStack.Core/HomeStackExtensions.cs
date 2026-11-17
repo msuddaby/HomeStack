@@ -3,6 +3,7 @@ using HomeStack.Core.Auth;
 using HomeStack.Core.Ai;
 using HomeStack.Core.Data;
 using HomeStack.Core.Notifications;
+using HomeStack.Core.Images;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.EntityFrameworkCore;
@@ -31,6 +32,17 @@ public static class HomeStackExtensions
         services.AddScoped<ICurrentUser, HttpCurrentUser>();
         services.AddScoped<DigestService>();
         services.AddHttpClient<NtfyClient>(c => c.Timeout = TimeSpan.FromSeconds(10));
+
+        // Images: small local copies of uploads and web pictures.
+        services.AddScoped<Images.ImageService>();
+        services.AddScoped<Images.ImageCache>();
+        services.AddSingleton<Images.ImageFetchFailures>();
+        services.AddHttpClient<Images.ImageFetcher>(c =>
+        {
+            c.Timeout = TimeSpan.FromSeconds(20);
+            c.DefaultRequestHeaders.UserAgent.ParseAdd("HomeStack/0.1 (self-hosted household app)");
+        });
+        services.AddHostedService<Images.ImageCacheWorker>();
         services.AddHostedService<DigestWorker>();
 
         // AI: one provider per wire format; AiService picks the household's.
@@ -82,6 +94,7 @@ public static class HomeStackExtensions
         app.MapAuthEndpoints();
         app.MapNotificationEndpoints();
         app.MapAiEndpoints();
+        app.MapImageEndpoints();
 
         var modules = app.ServiceProvider.GetServices<IModule>().ToList();
         app.MapGet("/api/modules", () => modules.Select(m => new { m.Id, m.Name })).WithTags("Core");
