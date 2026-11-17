@@ -82,6 +82,9 @@ public class MealsModule : IModule
         g.MapPost("/recipes", (RecipeRequest req, MealsService s) => s.CreateRecipeAsync(req)).Validate<RecipeRequest>();
         g.MapPut("/recipes/{id:int}", (int id, RecipeRequest req, MealsService s) => s.UpdateRecipeAsync(id, req)).Validate<RecipeRequest>();
         g.MapDelete("/recipes/{id:int}", async (int id, MealsService s) => { await s.DeleteRecipeAsync(id); return Results.NoContent(); });
+        g.MapPost("/recipes/{id:int}/image", async (int id, IFormFile? image, MealsService s, CancellationToken ct) =>
+            await s.SetRecipeImageAsync(id, await HomeStack.Core.Images.ImageService.ReadUploadAsync(image, ct), ct)).DisableAntiforgery();
+        g.MapDelete("/recipes/{id:int}/image", (int id, MealsService s) => s.RemoveRecipeImageAsync(id));
         g.MapPut("/recipes/{id:int}/ingredients/{ingredientId:int}/link", (int id, int ingredientId, LinkRequest req, MealsService s) =>
             s.LinkIngredientAsync(id, ingredientId, req));
         g.MapPost("/import", (ImportRequest req, RecipeImporter importer, CancellationToken ct) => importer.ImportAsync(req.Url, ct)).Validate<ImportRequest>();

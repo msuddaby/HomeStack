@@ -8,7 +8,8 @@ namespace HomeStack.Modules.Meals;
 public class RecipeImages(HomeStackDbContext db) : IRemoteImageSource
 {
     /// <summary>Big enough for the full-width photo on a phone's recipe page.</summary>
-    public int MaxEdge => 1000;
+    public const int Edge = 1000;
+    public int MaxEdge => Edge;
 
     // Runs for every household from the background job, so there's no household filter here.
     public Task<List<RemoteImage>> PendingAsync(int max, CancellationToken ct) =>

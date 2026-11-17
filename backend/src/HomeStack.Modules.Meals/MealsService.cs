@@ -137,6 +137,33 @@ public class MealsService(HomeStackDbContext db, ICurrentUser me, TimeProvider t
         await images.DeleteAsync(r.ImageId);
     }
 
+    /// <summary>Uses an uploaded photo as the recipe's picture, replacing any photo link.</summary>
+    public async Task<RecipeDto> SetRecipeImageAsync(int id, byte[] data, CancellationToken ct)
+    {
+        var r = await LoadRecipe(id);
+        var image = await images.SaveAsync(Hid, data, RecipeImages.Edge, ct: ct);
+        var old = r.ImageId;
+        r.ImageId = image.Id;
+        r.ImageUrl = null;
+        r.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+        await images.DeleteAsync(old, ct);
+        return ToDto(r, await LoadPantryAsync());
+    }
+
+    /// <summary>Removes the recipe's picture, uploaded or from a link.</summary>
+    public async Task<RecipeDto> RemoveRecipeImageAsync(int id)
+    {
+        var r = await LoadRecipe(id);
+        var old = r.ImageId;
+        r.ImageId = null;
+        r.ImageUrl = null;
+        r.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync();
+        await images.DeleteAsync(old);
+        return ToDto(r, await LoadPantryAsync());
+    }
+
     public async Task<RecipeDto> LinkIngredientAsync(int recipeId, int ingredientId, LinkRequest req)
     {
         var r = await LoadRecipe(recipeId);

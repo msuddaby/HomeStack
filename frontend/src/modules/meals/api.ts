@@ -74,6 +74,15 @@ export const useSaveRecipe = () =>
   useMealsMutation(({ id, ...v }: RecipeInput & { id?: number }) =>
     api<Recipe>(id ? `/meals/recipes/${id}` : "/meals/recipes", { method: id ? "PUT" : "POST", body: v }));
 export const useDeleteRecipe = () => useMealsMutation((id: number) => api(`/meals/recipes/${id}`, { method: "DELETE" }));
+/** Uses a photo (already shrunk on the phone) as the recipe's picture. */
+export const useSetRecipeImage = () =>
+  useMealsMutation(({ id, photo }: { id: number; photo: Blob }) => {
+    const form = new FormData();
+    form.append("image", photo, "photo.jpg");
+    return api<Recipe>(`/meals/recipes/${id}/image`, { body: form });
+  });
+export const useRemoveRecipeImage = () =>
+  useMealsMutation((id: number) => api<Recipe>(`/meals/recipes/${id}/image`, { method: "DELETE" }));
 export const useLinkIngredient = () =>
   useMealsMutation(({ recipeId, ingredientId, productId, staple }: { recipeId: number; ingredientId: number; productId: number | null; staple: boolean }) =>
     api<Recipe>(`/meals/recipes/${recipeId}/ingredients/${ingredientId}/link`, { method: "PUT", body: { productId, staple } }));

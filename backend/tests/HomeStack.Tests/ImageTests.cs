@@ -205,6 +205,35 @@ public class ImageTests
     }
 
     [Fact]
+    public async Task Uploaded_recipe_photo_replaces_the_link_and_survives_saving_the_recipe()
+    {
+        using var app = new TestApp();
+        var c = await app.SetupClientAsync();
+        object Body(string? imageUrl) => new
+        {
+            title = "Chili", servings = 4, imageUrl,
+            ingredients = new[] { "1 can beans" }, steps = Array.Empty<string>(), tags = Array.Empty<string>(),
+        };
+        var r = await (await c.Post("/api/meals/recipes", Body("https://example.com/chili.png"))).Read<RecipeDto>();
+
+        var withPhoto = await (await c.PostAsync($"/api/meals/recipes/{r.Id}/image", Upload(Png(3000, 2000)))).Read<RecipeDto>();
+        Assert.Null(withPhoto.ImageUrl);
+        Assert.StartsWith("/api/images/", withPhoto.Image);
+        Assert.Equal((1000, 667), ((await Fetch(c, withPhoto.Image!)).Width, (await Fetch(c, withPhoto.Image!)).Height));
+
+        // The edit page sends back an empty photo link: the upload stays.
+        var saved = await (await c.PutAsJsonAsync($"/api/meals/recipes/{r.Id}", Body(null), TestApp.Json)).Read<RecipeDto>();
+        Assert.Equal(withPhoto.Image, saved.Image);
+
+        var removed = await (await c.DeleteAsync($"/api/meals/recipes/{r.Id}/image")).Read<RecipeDto>();
+        Assert.Null(removed.Image);
+        Assert.Equal(HttpStatusCode.NotFound, (await c.GetAsync(withPhoto.Image)).StatusCode);
+
+        Assert.Equal(HttpStatusCode.BadRequest, (await c.PostAsync($"/api/meals/recipes/{r.Id}/image", Upload("nope"u8.ToArray()))).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await c.PostAsync("/api/meals/recipes/9999/image", Upload(Png(10, 10)))).StatusCode);
+    }
+
+    [Fact]
     public async Task Other_households_cannot_load_your_pictures()
     {
         using var app = new TestApp();
