@@ -1,0 +1,43 @@
+import { useCallback, useEffect, useState } from "react";
+
+/**
+ * TEMPORARY: a visible step-by-step log of picking a photo, to find out where it stops on iPhones
+ * (desktop works; nothing visible happens on iOS). Remove once the cause is known.
+ */
+export function usePhotoTrace() {
+  const [lines, setLines] = useState<string[]>([]);
+  const add = useCallback((message: string) => {
+    const t = new Date();
+    const stamp = `${t.toLocaleTimeString([], { hour12: false })}.${String(t.getMilliseconds()).padStart(3, "0")}`;
+    setLines((l) => [...l.slice(-19), `${stamp} ${message}`]);
+  }, []);
+
+  // Leaving for the camera or library hides the page; whether it comes back (or reloads) matters.
+  useEffect(() => {
+    add(`Ready. ${navigator.userAgent.match(/OS [\d_]+|Version\/[\d.]+/g)?.join(" ") ?? navigator.userAgent.slice(0, 60)}`
+      + ((navigator as Navigator & { standalone?: boolean }).standalone ? " (home-screen app)" : ""));
+    const onVisibility = () => add(`Page ${document.visibilityState}`);
+    const onFocus = () => add("Window focused");
+    const onPageShow = (e: PageTransitionEvent) => add(`Page shown${e.persisted ? " (restored)" : ""}`);
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("focus", onFocus);
+    window.addEventListener("pageshow", onPageShow);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("focus", onFocus);
+      window.removeEventListener("pageshow", onPageShow);
+    };
+  }, [add]);
+
+  return { lines, add };
+}
+
+export function PhotoTrace({ lines }: { lines: string[] }) {
+  if (lines.length === 0) return null;
+  return (
+    <div className="rounded-xl border border-dashed border-border bg-surface-2 p-2">
+      <p className="mb-1 text-[11px] font-semibold text-muted">Photo debug log (temporary). Screenshot this after trying.</p>
+      <pre className="whitespace-pre-wrap break-all font-mono text-[11px] leading-snug text-text">{lines.join("\n")}</pre>
+    </div>
+  );
+}

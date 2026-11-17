@@ -6,6 +6,8 @@ import path from "node:path";
 
 export default defineConfig({
   resolve: { alias: { "@": path.resolve(import.meta.dirname, "src") } },
+  // Shown in Settings, so you can tell whether a phone is running the latest build or a cached one.
+  define: { __BUILD_TIME__: JSON.stringify(new Date().toISOString()) },
   plugins: [
     react(),
     tailwindcss(),

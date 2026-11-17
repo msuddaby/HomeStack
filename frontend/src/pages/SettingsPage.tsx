@@ -31,6 +31,7 @@ export function SettingsPage() {
           </div>
         </Card>
         <ChangePasswordSheet open={changingPassword} onClose={() => setChangingPassword(false)} />
+        <p className="text-center text-xs text-muted">Version built {new Date(__BUILD_TIME__).toLocaleString()}</p>
       </div>
     </>
   );

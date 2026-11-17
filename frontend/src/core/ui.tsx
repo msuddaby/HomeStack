@@ -1,4 +1,4 @@
-import { useEffect, type ButtonHTMLAttributes, type ComponentProps, type ReactNode } from "react";
+import { useEffect, useRef, type ButtonHTMLAttributes, type ComponentProps, type ReactNode } from "react";
 import { X, Loader2 } from "lucide-react";
 
 const cx = (...c: (string | false | null | undefined)[]) => c.filter(Boolean).join(" ");
@@ -33,18 +33,46 @@ export function Button({ variant = "secondary", busy, className, children, disab
  * (not a hidden input clicked from code), which is the pattern iOS Safari and home-screen apps handle reliably.
  * The input is only cleared after `onFile` finishes, because iOS can discard a picked photo's data once it is.
  */
-export function PhotoButton({ onFile, busy, variant = "secondary", className, children }: {
+export function PhotoButton({ onFile, busy, variant = "secondary", className, children, trace }: {
   onFile: (file: File) => Promise<void>; busy?: boolean; variant?: Variant; className?: string; children: ReactNode;
+  /** TEMPORARY: logs each step, to find where picking stops on iPhones. */
+  trace?: (message: string) => void;
 }) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  // Kept current so the native listeners below always call the latest callbacks.
+  const latest = useRef({ onFile, trace });
+  latest.current = { onFile, trace };
+
+  // Native listeners rather than React's onChange: they log every event the phone actually sends, and a picked
+  // file is handled from either "change" or "input" (whichever arrives), once.
+  useEffect(() => {
+    const input = inputRef.current;
+    if (!input) return;
+    let handling = false;
+    const handle = async (e: Event) => {
+      const file = input.files?.[0];
+      latest.current.trace?.(`Event "${e.type}": ${input.files?.length ?? 0} file(s)`
+        + (file ? ` — ${file.name || "(no name)"}, ${file.type || "(no type)"}, ${Math.round(file.size / 1024)} KB` : ""));
+      if (!file || handling) return;
+      handling = true;
+      try { await latest.current.onFile(file); } finally { input.value = ""; handling = false; }
+    };
+    const onCancel = () => latest.current.trace?.('Event "cancel": picker closed without a photo');
+    input.addEventListener("change", handle);
+    input.addEventListener("input", handle);
+    input.addEventListener("cancel", onCancel);
+    return () => {
+      input.removeEventListener("change", handle);
+      input.removeEventListener("input", handle);
+      input.removeEventListener("cancel", onCancel);
+    };
+  }, []);
+
   return (
-    <label className={cx(buttonBase, variants[variant], busy ? "pointer-events-none opacity-50" : "cursor-pointer", className)}>
-      <input type="file" accept="image/*" className="sr-only" disabled={busy}
-        onChange={async (e) => {
-          const input = e.currentTarget;
-          const file = input.files?.[0];
-          if (!file) return;
-          try { await onFile(file); } finally { input.value = ""; }
-        }} />
+    <label className={cx(buttonBase, variants[variant], busy ? "pointer-events-none opacity-50" : "cursor-pointer", className)}
+      onClick={() => trace?.("Tapped photo button")}>
+      <input ref={inputRef} type="file" accept="image/*" className="sr-only" disabled={busy}
+        onClick={() => trace?.("File input clicked (picker should open)")} />
       {busy && <Loader2 className="size-4 animate-spin" />}
       {children}
     </label>
