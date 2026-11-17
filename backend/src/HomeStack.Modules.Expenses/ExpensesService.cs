@@ -137,9 +137,9 @@ public class ExpensesService(HomeStackDbContext db, ICurrentUser me, TimeProvide
         foreach (var l in req.Lines ?? [])
         {
             var line = r.Lines.SingleOrDefault(x => x.Id == l.LineId) ?? throw new BadRequestException("Unknown line");
-            line.Split = SplitMath.Parts(l.Split);
+            line.Split = SplitMath.Replace(db, line.Split, l.Split);
         }
-        r.Split = SplitMath.Parts(req.Split);
+        r.Split = SplitMath.Replace(db, r.Split, req.Split);
         var anySplit = r.Split.Count > 0 || r.Lines.Any(l => l.Split.Count > 0);
         r.PaidByPersonId = await PayerAsync(req.PaidByPersonId, anySplit, req.Split, (req.Lines ?? []).SelectMany(l => l.Split ?? []));
         var owed = SplitMath.ApplyShares(r);

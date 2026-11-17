@@ -208,7 +208,7 @@ public class BillsService(HomeStackDbContext db, ICurrentUser me, TimeProvider t
         if (r.DayOfMonth == 0) r.DayOfMonth = req.NextDate.Day;
         r.Active = req.Active;
         r.Note = Clean(req.Note, 500);
-        r.Split = SplitMath.Parts(req.Split);
+        r.Split = SplitMath.Replace(db, r.Split, req.Split);
     }
 
     /// <summary>Stops it; expenses already recorded for it stay.</summary>

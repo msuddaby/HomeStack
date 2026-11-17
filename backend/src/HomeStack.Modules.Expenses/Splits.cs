@@ -74,6 +74,16 @@ public static class SplitMath
         return more;
     }
 
+    /// <summary>
+    /// Replaces a split. The old parts are deleted: just dropping them from the list would only clear their owner,
+    /// leaving rows that belong to nothing but still point at people.
+    /// </summary>
+    public static List<SplitPart> Replace(DbContext db, List<SplitPart> old, IEnumerable<SplitPartDto>? parts)
+    {
+        db.RemoveRange(old);
+        return Parts(parts);
+    }
+
     public static List<SplitPart> Parts(IEnumerable<SplitPartDto>? parts) =>
         (parts ?? []).Select(p => new SplitPart { PersonId = p.PersonId, Weight = p.Weight }).ToList();
 
@@ -225,6 +235,10 @@ public class PeopleService(HomeStackDbContext db, ICurrentUser me)
             if (r.PaidByPersonId == id) r.PaidByPersonId = into.Id;
             MoveParts(r.Split, id, into.Id);
         }
+
+        // Split parts left behind by re-splits before that was fixed: they belong to nothing.
+        await db.Set<SplitPart>().Where(p => p.PersonId == id && p.ReceiptId == null && p.LineId == null && p.RecurringId == null)
+            .ExecuteDeleteAsync();
 
         // Anything missed would still point at them, and the delete would fail (nothing's half-done: one save).
         db.Remove(from);

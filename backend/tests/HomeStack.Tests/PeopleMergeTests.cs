@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http.Json;
 using HomeStack.Core.Auth;
 using HomeStack.Modules.Expenses;
 using Device = HomeStack.Tests.PushTests.Device;
@@ -112,6 +113,31 @@ public class PeopleMergeTests
         var recurring = (await (await alex.GetAsync("/api/expenses/recurring")).Read<List<RecurringDto>>()).Single(r => r.Id == rent.Id);
         Assert.Equal(s, recurring.PaidByPersonId);
         Assert.Equal([a, s], recurring.Split.Select(p => p.PersonId).Order());
+    }
+
+    [Fact]
+    public async Task Someone_taken_out_of_splits_can_still_be_merged()
+    {
+        using var app = new TestApp();
+        var alex = await app.SetupClientAsync();
+        (await alex.Post("/api/household/users", new { name = "Sam", username = "sam", password = "password123" })).EnsureSuccessStatusCode();
+        var people = await People(alex);
+        int a = people.Single(p => p.Name == "Tester").Id, s = people.Single(p => p.Name == "Sam").Id;
+        var pat = await (await alex.Post("/api/expenses/people", new { name = "Pat" })).Read<PersonDto>();
+
+        // Split with Pat, then re-split without them; a recurring payment too.
+        var r = await (await Expense(alex, app, "Pizza", 30m, a, Part(a), Part(pat.Id))).Read<ReceiptDto>();
+        (await alex.PutAsJsonAsync($"/api/expenses/receipts/{r.Id}/split", new { paidByPersonId = a, split = new[] { Part(a), Part(s) } })).EnsureSuccessStatusCode();
+        var rent = new
+        {
+            name = "Rent", category = "housing", amount = 1000m, frequency = "Monthly", nextDate = app.Today.AddDays(5), paidByPersonId = a,
+            split = new[] { Part(a), Part(pat.Id) },
+        };
+        var rec = await (await alex.Post("/api/expenses/recurring", rent)).Read<RecurringDto>();
+        (await alex.PutAsJsonAsync($"/api/expenses/recurring/{rec.Id}", rent with { split = new[] { Part(a), Part(s) } })).EnsureSuccessStatusCode();
+
+        (await alex.Post($"/api/expenses/people/{pat.Id}/merge", new { intoPersonId = s })).EnsureSuccessStatusCode();
+        Assert.DoesNotContain(await People(alex), p => p.Id == pat.Id);
     }
 
     [Fact]
