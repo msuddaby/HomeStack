@@ -316,7 +316,7 @@ public class ExpensesService(HomeStackDbContext db, ICurrentUser me, TimeProvide
             .AsSplitQuery().SingleOrDefaultAsync(x => x.Id == id) ?? throw new NotFoundException("Receipt not found");
         var names = r.PaidByPersonId is null ? [] : await people.NamesAsync();
         var breakdown = SplitMath.Breakdown(r);
-        var members = r.Shares.Count == 0 ? [] : await db.Set<Person>().Where(p => p.HouseholdId == Hid && p.UserId != null).Select(p => p.Id).ToListAsync();
+        var members = r.Shares.Count == 0 ? [] : await people.MemberIdsAsync();
         return new ReceiptDto(r.Id, r.Store?.Name, r.PurchasedAt, r.Subtotal, r.Tax, r.Total, r.Note, r.Source,
             r.ImageIds.Select(i => StoredImage.Src(i, null)!).ToList(),
             r.Lines.OrderBy(l => l.Sort).Select(l => new ReceiptLineDto(l.Id, l.ItemId, l.Code, l.Name, l.Raw, l.Category, l.Quantity,

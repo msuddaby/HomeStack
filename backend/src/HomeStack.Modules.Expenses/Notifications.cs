@@ -101,6 +101,9 @@ public class ExpenseNotifier(HomeStackDbContext db, ICurrentUser me, PushService
         var people = await db.Set<Person>().Where(p => p.HouseholdId == Hid).ToDictionaryAsync(p => p.Id, ct);
         var person = people.GetValueOrDefault(req.PersonId) ?? throw new NotFoundException("Person not found");
         var payer = people.GetValueOrDefault(req.OwedToPersonId)?.Name ?? throw new NotFoundException("Person not found");
+        if (person.FormerMember || (person.UserId is int linked && !await db.Users.AnyAsync(u => u.Id == linked && u.HouseholdId == Hid, ct)))
+            throw new BadRequestException($"{person.Name} is no longer a household member, so they can't get notifications. " +
+                "If they've been added again, merge them in Expenses settings.");
         if (person.UserId is not int userId) throw new BadRequestException($"{person.Name} isn't on HomeStack, so they can't get notifications.");
 
         var owed = await (from r in db.Set<Receipt>().Include(r => r.Store)

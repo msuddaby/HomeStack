@@ -2,14 +2,16 @@ import { useState } from "react";
 import { Link } from "react-router";
 import { shortDate } from "@/core/dates";
 import { Button, Card, Chip, cx, Empty, ErrorText, Spinner } from "@/core/ui";
-import { BellRing } from "lucide-react";
-import { canRemindAgain, remindedLabel, useBalances, useMarkReceived, useRemind, type Balance } from "./api";
+import { BellRing, GitMerge } from "lucide-react";
+import { canRemindAgain, remindedLabel, useBalances, useMarkReceived, usePeople, useRemind, type Balance } from "./api";
+import { personLabel } from "./PeopleSettings";
 import { money } from "./format";
 
 /** Who owes whom for split expenses. Admins tick shares off as they're paid back. */
 export function OwedPage() {
   const balances = useBalances();
   const mark = useMarkReceived();
+  const people = usePeople();
   const [showReceived, setShowReceived] = useState(false);
   if (balances.error) return <ErrorText error={balances.error} />;
   if (!balances.data) return <Spinner />;
@@ -20,6 +22,12 @@ export function OwedPage() {
 
   return (
     <div className="flex flex-col gap-4">
+      {canMarkReceived && (people.data ?? []).filter((p) => p.sameAsId != null).map((p) => (
+        <Link key={p.id} to="/settings" className="flex items-center gap-3 rounded-2xl border border-border bg-surface-2 p-3 text-sm">
+          <GitMerge className="size-5 shrink-0 text-accent" />
+          <span><b>{personLabel(p)}</b> may be {people.data?.find((m) => m.id === p.sameAsId)?.name}. Merge them in Settings.</span>
+        </Link>
+      ))}
       {myPersonId != null && (iOwe > 0 || owedToMe > 0) && (
         <div className="grid grid-cols-2 gap-2">
           <Card><p className="text-xs text-muted">You owe</p><p className="text-xl font-bold tabular-nums">{money(iOwe)}</p></Card>

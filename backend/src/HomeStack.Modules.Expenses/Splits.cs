@@ -88,17 +88,31 @@ public class PeopleService(HomeStackDbContext db, ICurrentUser me)
 
     /// <summary>
     /// Everyone you can split with. Household members are added (and renamed) automatically; a member who's been
-    /// removed is archived so their history stays.
+    /// removed is archived so their history stays. Someone who isn't a member but has a member's name is flagged as
+    /// possibly them (a member removed and added again, or someone added by name before they joined).
     /// </summary>
     public async Task<List<PersonDto>> ListAsync()
     {
         await SyncMembersAsync();
         var mine = me.UserId;
-        return (await People.OrderBy(p => p.Archived).ThenBy(p => p.UserId == null).ThenBy(p => p.Name).ToListAsync())
-            .Select(p => new PersonDto(p.Id, p.Name, p.UserId, p.Archived, p.UserId == mine && mine != 0)).ToList();
+        var all = await People.OrderBy(p => p.Archived).ThenBy(p => p.UserId == null).ThenBy(p => p.Name).ToListAsync();
+        var members = all.Where(p => p.UserId != null).ToList();
+        return all.Select(p => new PersonDto(p.Id, p.Name, p.UserId, p.Archived, p.UserId == mine && mine != 0, p.FormerMember,
+            SameAsId(p, members))).ToList();
     }
 
-    private async Task SyncMembersAsync()
+    private static int? SameAsId(Person p, List<Person> members)
+    {
+        if (p.UserId != null || p.NotSameAsMember) return null;
+        var same = members.Where(m => string.Equals(m.Name.Trim(), p.Name.Trim(), StringComparison.OrdinalIgnoreCase)).ToList();
+        return same.Count == 1 ? same[0].Id : null;
+    }
+
+    /// <summary>
+    /// Brings people in line with household members: new members are added, renamed ones renamed. A removed member
+    /// is archived and unlinked from the account that's gone (so nothing treats them as a member any more).
+    /// </summary>
+    internal async Task SyncMembersAsync()
     {
         var users = await db.Users.Where(u => u.HouseholdId == Hid).Select(u => new { u.Id, u.Name }).ToListAsync();
         var people = await People.Where(p => p.UserId != null).ToListAsync();
@@ -108,8 +122,20 @@ public class PeopleService(HomeStackDbContext db, ICurrentUser me)
             if (p is null) db.Add(new Person { HouseholdId = Hid, Name = u.Name, UserId = u.Id });
             else { p.Name = u.Name; p.Archived = false; }
         }
-        foreach (var p in people.Where(p => users.All(u => u.Id != p.UserId))) p.Archived = true;
+        foreach (var p in people.Where(p => users.All(u => u.Id != p.UserId)))
+        {
+            p.UserId = null;
+            p.Archived = true;
+            p.FormerMember = true;
+        }
         await db.SaveChangesAsync();
+    }
+
+    /// <summary>The people who are household members (with an account that still exists).</summary>
+    public async Task<List<int>> MemberIdsAsync()
+    {
+        await SyncMembersAsync();
+        return await People.Where(p => p.UserId != null).Select(p => p.Id).ToListAsync();
     }
 
     /// <summary>The signed-in member's own person (created if needed). Null for background jobs.</summary>
@@ -160,6 +186,100 @@ public class PeopleService(HomeStackDbContext db, ICurrentUser me)
 
     public async Task<Dictionary<int, string>> NamesAsync() => await People.ToDictionaryAsync(p => p.Id, p => p.Name);
 
+    // ---------- Merging ----------
+
+    /// <summary>
+    /// Admins: someone who isn't a member (a removed member, or someone added by name) turns out to be
+    /// <see cref="MergePersonRequest.IntoPersonId"/>. Everything of theirs moves over: expenses they paid, their part of
+    /// splits, what they owe and are owed, recurring payments. Then they're removed.
+    /// </summary>
+    public async Task<MergeResultDto> MergeAsync(int id, MergePersonRequest req)
+    {
+        await me.RequireAdminAsync(db);
+        await SyncMembersAsync();
+        var from = await People.SingleOrDefaultAsync(p => p.Id == id) ?? throw new NotFoundException("Person not found");
+        var into = await People.SingleOrDefaultAsync(p => p.Id == req.IntoPersonId) ?? throw new NotFoundException("Person not found");
+        if (from.Id == into.Id) throw new BadRequestException("Choose someone else to merge into.");
+        if (from.UserId is not null)
+            throw new BadRequestException($"{from.Name} is a household member. Only people who aren't (or are no longer) members can be merged.");
+        if (into.Archived) throw new BadRequestException($"{into.Name} has been removed. Merge into someone current.");
+
+        var receipts = await db.Set<Receipt>()
+            .Where(r => r.HouseholdId == Hid && (r.PaidByPersonId == id || r.Split.Any(p => p.PersonId == id)
+                || r.Shares.Any(s => s.PersonId == id) || r.Lines.Any(l => l.Split.Any(p => p.PersonId == id))))
+            .Include(r => r.Split).Include(r => r.Shares).Include(r => r.Lines).ThenInclude(l => l.Split)
+            .AsSplitQuery().ToListAsync();
+        foreach (var r in receipts)
+        {
+            if (r.PaidByPersonId == id) r.PaidByPersonId = into.Id;
+            MoveParts(r.Split, id, into.Id);
+            foreach (var l in r.Lines) MoveParts(l.Split, id, into.Id);
+            MoveShares(r, id, into.Id);
+        }
+
+        var recurring = await db.Set<Recurring>()
+            .Where(r => r.HouseholdId == Hid && (r.PaidByPersonId == id || r.Split.Any(p => p.PersonId == id)))
+            .Include(r => r.Split).ToListAsync();
+        foreach (var r in recurring)
+        {
+            if (r.PaidByPersonId == id) r.PaidByPersonId = into.Id;
+            MoveParts(r.Split, id, into.Id);
+        }
+
+        // Anything missed would still point at them, and the delete would fail (nothing's half-done: one save).
+        db.Remove(from);
+        await db.SaveChangesAsync();
+        return new MergeResultDto(into.Id, into.Name, receipts.Count + recurring.Count);
+    }
+
+    /// <summary>Their part of a split goes to the other person (added to theirs, if they're both in it).</summary>
+    private void MoveParts(List<SplitPart> parts, int from, int into)
+    {
+        if (parts.FirstOrDefault(p => p.PersonId == from) is not { } part) return;
+        if (parts.FirstOrDefault(p => p.PersonId == into) is { } theirs)
+        {
+            theirs.Weight += part.Weight;
+            parts.Remove(part);
+            db.Remove(part);
+        }
+        else part.PersonId = into;
+    }
+
+    /// <summary>
+    /// What they owe on an expense becomes the other person's (added together if both owe; received only if both were).
+    /// Nobody owes themselves: if the other person paid it, the share goes.
+    /// </summary>
+    private void MoveShares(Receipt r, int from, int into)
+    {
+        if (r.Shares.FirstOrDefault(s => s.PersonId == from) is { } share)
+        {
+            if (r.Shares.FirstOrDefault(s => s.PersonId == into) is { } theirs)
+            {
+                theirs.Amount += share.Amount;
+                var bothReceived = theirs.ReceivedAt is not null && share.ReceivedAt is not null;
+                if (!bothReceived) { theirs.ReceivedAt = null; theirs.ReceivedByUserId = null; }
+                theirs.RemindedAt = new[] { theirs.RemindedAt, share.RemindedAt }.Max();
+                r.Shares.Remove(share);
+                db.Remove(share);
+            }
+            else share.PersonId = into;
+        }
+        foreach (var own in r.Shares.Where(s => s.PersonId == r.PaidByPersonId).ToList())
+        {
+            r.Shares.Remove(own);
+            db.Remove(own);
+        }
+    }
+
+    /// <summary>Admins: they aren't the member with the same name; stop suggesting it.</summary>
+    public async Task NotSameAsMemberAsync(int id)
+    {
+        await me.RequireAdminAsync(db);
+        var p = await People.SingleOrDefaultAsync(x => x.Id == id) ?? throw new NotFoundException("Person not found");
+        p.NotSameAsMember = true;
+        await db.SaveChangesAsync();
+    }
+
     // ---------- Who owes whom ----------
 
     /// <summary>Outstanding shares by person and who they owe (plus those received in the last <paramref name="receivedDays"/> days).</summary>
@@ -176,8 +296,8 @@ public class PeopleService(HomeStackDbContext db, ICurrentUser me)
                               First = r.Lines.OrderBy(l => l.Sort).Select(l => l.Name).FirstOrDefault(), LineCount = r.Lines.Count, s.Amount, s.ReceivedAt,
                               s.RemindedAt,
                           }).ToListAsync();
+        var members = await MemberIdsAsync();
         var names = await NamesAsync();
-        var members = await People.Where(p => p.UserId != null).Select(p => p.Id).ToListAsync();
         var balances = rows.GroupBy(x => (x.PersonId, x.OwedTo)).Select(g => new BalanceDto(
                 g.Key.PersonId, names.GetValueOrDefault(g.Key.PersonId, "?"), g.Key.OwedTo, names.GetValueOrDefault(g.Key.OwedTo, "?"),
                 g.Where(x => x.ReceivedAt == null).Sum(x => x.Amount),

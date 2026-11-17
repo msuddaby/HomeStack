@@ -347,6 +347,9 @@ namespace HomeStack.Api.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("TEXT");
 
+                    b.Property<bool>("FormerMember")
+                        .HasColumnType("INTEGER");
+
                     b.Property<int>("HouseholdId")
                         .HasColumnType("INTEGER");
 
@@ -354,6 +357,9 @@ namespace HomeStack.Api.Migrations
                         .IsRequired()
                         .HasMaxLength(80)
                         .HasColumnType("TEXT");
+
+                    b.Property<bool>("NotSameAsMember")
+                        .HasColumnType("INTEGER");
 
                     b.Property<int?>("UserId")
                         .HasColumnType("INTEGER");

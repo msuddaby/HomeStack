@@ -14,6 +14,10 @@ public class Person
     public int? UserId { get; set; }
     /// <summary>Hidden from pickers; their history stays.</summary>
     public bool Archived { get; set; }
+    /// <summary>Was a household member whose account has since been removed (<see cref="UserId"/> is cleared then).</summary>
+    public bool FormerMember { get; set; }
+    /// <summary>An admin said they aren't the member with the same name: don't suggest merging them.</summary>
+    public bool NotSameAsMember { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
 

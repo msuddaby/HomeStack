@@ -36,7 +36,13 @@ export interface ReceiptDraft {
 
 /** One person's part of a split: weight 1 each for equal, or the amounts themselves for custom amounts. */
 export interface SplitPart { personId: number; weight: number }
-export interface Person { id: number; name: string; userId: number | null; archived: boolean; isMe: boolean }
+/**
+ * Someone to split with. formerMember: their account was removed. sameAsId: a current member with the same name,
+ * who they may be (offer to merge them).
+ */
+export interface Person {
+  id: number; name: string; userId: number | null; archived: boolean; isMe: boolean; formerMember: boolean; sameAsId: number | null;
+}
 export interface Share {
   id: number; personId: number; person: string; amount: number; receivedAt: string | null;
   /** Their part of each line, before tax; the rest of `amount` is tax and anything not itemised. */
@@ -177,6 +183,12 @@ export const useAddPerson = () => useExpensesMutation((name: string) => api<Pers
 export const useRenamePerson = () =>
   useExpensesMutation(({ id, name }: { id: number; name: string }) => api<Person>(`/expenses/people/${id}`, { method: "PUT", body: { name } }));
 export const useArchivePerson = () => useExpensesMutation((id: number) => api(`/expenses/people/${id}`, { method: "DELETE" }));
+/** Admins: move everything of someone who isn't a member onto another person, then remove them. */
+export const useMergePerson = () =>
+  useExpensesMutation(({ id, intoPersonId }: { id: number; intoPersonId: number }) =>
+    api<{ intoPersonId: number; into: string; expenses: number }>(`/expenses/people/${id}/merge`, { body: { intoPersonId } }));
+/** Admins: they aren't the member with the same name. */
+export const useNotSamePerson = () => useExpensesMutation((id: number) => api(`/expenses/people/${id}/not-same`, { method: "POST" }));
 export const useSetSplit = () =>
   useExpensesMutation(({ id, ...v }: { id: number; paidByPersonId: number | null; split: SplitPart[] | null; lines?: { lineId: number; split: SplitPart[] | null }[] }) =>
     api<Receipt>(`/expenses/receipts/${id}/split`, { method: "PUT", body: v }));

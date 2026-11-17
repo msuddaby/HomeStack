@@ -126,8 +126,15 @@ public record SplitPartDto(int PersonId, double Weight = 1)
     }
 }
 
-public record PersonDto(int Id, string Name, int? UserId, bool Archived, bool IsMe);
+/// <param name="FormerMember">Was a household member whose account was removed.</param>
+/// <param name="SameAsId">A current member with the same name, who this may be (offer to merge them).</param>
+public record PersonDto(int Id, string Name, int? UserId, bool Archived, bool IsMe, bool FormerMember = false, int? SameAsId = null);
 public record PersonRequest([Required, StringLength(80, MinimumLength = 1)] string Name);
+
+/// <summary>Move everything of one person's onto <see cref="IntoPersonId"/>, then remove them.</summary>
+public record MergePersonRequest([Range(1, int.MaxValue)] int IntoPersonId);
+/// <param name="Expenses">Expenses and recurring payments that changed.</param>
+public record MergeResultDto(int IntoPersonId, string Into, int Expenses);
 
 public record LineSplitRequest(int LineId, List<SplitPartDto>? Split);
 

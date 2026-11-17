@@ -162,6 +162,8 @@ public class ExpensesModule : IModule
         g.MapPost("/people", (PersonRequest req, PeopleService s) => s.AddAsync(req)).Validate<PersonRequest>();
         g.MapPut("/people/{id:int}", (int id, PersonRequest req, PeopleService s) => s.RenameAsync(id, req)).Validate<PersonRequest>();
         g.MapDelete("/people/{id:int}", async (int id, PeopleService s) => { await s.ArchiveAsync(id); return Results.NoContent(); });
+        g.MapPost("/people/{id:int}/merge", (int id, MergePersonRequest req, PeopleService s) => s.MergeAsync(id, req)).Validate<MergePersonRequest>();
+        g.MapPost("/people/{id:int}/not-same", async (int id, PeopleService s) => { await s.NotSameAsMemberAsync(id); return Results.NoContent(); });
         g.MapPut("/receipts/{id:int}/split", (int id, SetSplitRequest req, ExpensesService s) => s.SetSplitAsync(id, req)).Validate<SetSplitRequest>();
         g.MapGet("/balances", (PeopleService s) => s.BalancesAsync());
         g.MapPost("/remind", (RemindRequest req, ExpenseNotifier n, CancellationToken ct) => n.RemindAsync(req, ct)).Validate<RemindRequest>();
