@@ -146,10 +146,13 @@ public class InventoryService(HomeStackDbContext db, ICurrentUser me, TimeProvid
 
     public async Task<ItemDto> GetItemAsync(int id) => (await LoadItem(id)).ToDto();
 
-    /// <summary>Adds several items in one transaction. New products with a name we already know reuse that product.</summary>
+    /// <summary>
+    /// Adds several items in one transaction (or the caller's, e.g. saving a receipt). New products with a name
+    /// we already know reuse that product.
+    /// </summary>
     public async Task<List<ItemDto>> AddItemsAsync(IReadOnlyList<AddItemRequest> requests)
     {
-        await using var tx = await db.Database.BeginTransactionAsync();
+        await using var tx = db.Database.CurrentTransaction is null ? await db.Database.BeginTransactionAsync() : null;
         var added = new List<ItemDto>();
         foreach (var r in requests)
         {
@@ -157,7 +160,7 @@ public class InventoryService(HomeStackDbContext db, ICurrentUser me, TimeProvid
                 ? r with { ProductId = known.Id, Product = null } : r;
             added.Add(await AddItemAsync(req));
         }
-        await tx.CommitAsync();
+        if (tx is not null) await tx.CommitAsync();
         return added;
     }
 

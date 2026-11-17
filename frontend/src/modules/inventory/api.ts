@@ -111,7 +111,6 @@ function useInventoryMutation<TVars, TResult>(fn: (v: TVars) => Promise<TResult>
 
 export const useAddItem = () => useInventoryMutation((v: AddItem) => api<Item>("/inventory/items", { body: v }));
 export const useAddItems = () => useInventoryMutation((items: AddItem[]) => api<Item[]>("/inventory/items/batch", { body: { items } }));
-export const readReceipt = (form: FormData) => api<ReadResult>("/inventory/read/receipt", { body: form });
 export const readText = (text: string) => api<ReadResult>("/inventory/read/text", { body: { text } });
 export const useUpdateItem = () =>
   useInventoryMutation(({ id, ...v }: UpdateItem & { id: number }) => api<Item>(`/inventory/items/${id}`, { method: "PUT", body: v }));

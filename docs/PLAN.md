@@ -74,11 +74,23 @@ Modules may read each other through service functions (e.g. meal planning reads 
 - ✅ Provider layer (built 2026-11-14): per-household settings; OpenAI-compatible format (DeepSeek default, OpenAI, Ollama,
   OpenRouter, LM Studio…) plus native Anthropic; connection test checks text and vision; `AiService.JsonAsync<T>` for modules
 - ✅ Receipt scan + natural-language add (built 2026-11-14): photos (up to 4, shrunk on the phone) or typed text → review list
-  (names, category, place, quantity, expiry) → add all in one transaction; known product names are fed to the model and matched
+  (names, category, place, quantity, expiry) → add all in one transaction; known product names are fed to the model and matched.
+  Receipts moved to the Spending module on 2026-11-17 (see Phase 5); typed lists stay here
 - Fridge/pantry photo → suggested items to add
 - ✅ Meal ideas (built 2026-11-14): "Use it up" on What can I make? and "Plan my week" on the plan. Saved recipes first,
   new ones otherwise; missing/expiring worked out against real stock; nothing saved until accepted (new ones tagged `idea`)
 - An **MCP server** exposing HomeStack, so you can ask Claude "what's about to go off?" from any client
+
+### Phase 5: Spending ✅ (built 2026-11-17)
+- `expenses` module ("Spending"): stores, receipts, receipt lines, tracked items and each store's item numbers for them
+- One receipt scanner (from Spending or Inventory → Add → Scan receipt): every line with item number, quantity, price and
+  discount, plus store, tax and total; food lines can go into inventory in the same save (one transaction); receipt photos kept.
+  Unticking "Put away" is remembered per item (a case of pop is tracked as spending, not inventory); "Snacks & drinks" category
+- Same store + item number links to the same item automatically; across stores the AI suggests "same as X?" and the user confirms.
+  Items can also be combined by hand ("Same as another item…")
+- Overview by month (category incl. tax, store, six-month bars), receipts, item history with price per store and buying rhythm,
+  manual expenses; "Usually buy about now" on Home and in the daily digest, with add-to-list
+- Later: bills and subscriptions (recurring expenses), budgets per category, edit receipt lines after saving, CSV export
 
 ### Cross-cutting
 - ✅ Docker deployment: restart policy, runs as host user, persistent sign-in keys (built 2026-11-14)
@@ -89,4 +101,4 @@ Modules may read each other through service functions (e.g. meal planning reads 
 
 ### Future module ideas
 Home maintenance (filters, smoke detector batteries, seasonal tasks), chores, warranties and manuals,
-household documents, plant care, bills/subscriptions.
+household documents, plant care. (Bills/subscriptions: next step for Spending.)

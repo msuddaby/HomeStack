@@ -15,27 +15,15 @@ public record ReadItemDto(
 public record ReadResultDto(string? Store, DateOnly? PurchasedAt, IReadOnlyList<ReadItemDto> Items, IReadOnlyList<string> Skipped, string? Note);
 
 /// <summary>
-/// Turns receipt photos or a typed list ("2 lbs chicken, a dozen eggs") into inventory items using the
-/// household's AI provider. Output is a suggestion for the user to review, never added directly.
+/// Turns a typed list ("2 lbs chicken, a dozen eggs") into inventory items using the household's AI provider.
+/// Output is a suggestion for the user to review, never added directly. (Receipt photos are read by the expenses
+/// module's ReceiptReader, which records the whole receipt.)
 /// </summary>
 public class GroceryReader(AiService ai, InventoryService inventory, TimeProvider time)
 {
     // Shape the model fills in; everything is optional and validated afterwards.
     private record Reply(string? Store, string? Date, List<ReplyItem>? Items, List<string>? Skipped, string? Note);
     private record ReplyItem(string? Name, string? Brand, string? Category, string? Location, double? Quantity, string? Unit, decimal? Price, string? Raw);
-
-    public const int MaxImages = 4;
-    public const long MaxImageBytes = 8 * 1024 * 1024;
-    public static readonly string[] ImageTypes = ["image/jpeg", "image/png", "image/webp"];
-
-    public async Task<ReadResultDto> ReadReceiptAsync(IReadOnlyList<AiImage> images, CancellationToken ct)
-    {
-        var prompt = new StringBuilder()
-            .AppendLine(images.Count > 1 ? $"These {images.Count} photos are one grocery receipt, top to bottom." : "This photo is a grocery receipt.")
-            .AppendLine("List the food and drink items bought.")
-            .AppendLine(Shape);
-        return await ReadAsync(new AiPrompt(await SystemPromptAsync(), prompt.ToString(), images, MaxTokens: 8192), ct);
-    }
 
     public async Task<ReadResultDto> ReadTextAsync(string text, CancellationToken ct)
     {

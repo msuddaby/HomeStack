@@ -1,30 +1,28 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
-import { Camera, Check, ImagePlus, Sparkles, X } from "lucide-react";
-import { shrinkImage, useAiSettings } from "@/core/ai";
+import { Check, Sparkles } from "lucide-react";
+import { useAiSettings } from "@/core/ai";
 import { errorMessage } from "@/core/api";
 import { shortDate, todayISO } from "@/core/dates";
-import { Button, Chip, cx, ErrorText, Input, PhotoButton, Select, Sheet, Spinner } from "@/core/ui";
-import { readReceipt, readText, useAddItems, useCategories, useLocations, type AddItem, type Category, type Location, type ReadItem, type ReadResult } from "./api";
+import { Button, Chip, cx, Input, Select, Sheet, Spinner } from "@/core/ui";
+import { readText, useAddItems, useCategories, useLocations, type AddItem, type Category, type Location, type ReadItem, type ReadResult } from "./api";
 import { suggestExpiry } from "./logic";
-
-export type ReadMode = "receipt" | "text";
 
 interface Row {
   key: number; include: boolean; name: string; category: string; locationId: number; quantity: string; unit: string;
   expiresAt: string; expiryTouched: boolean; source: ReadItem;
 }
 
-/** Receipt photo or typed list → AI → editable review list → add all. */
-export function ReadSheet({ open, mode, onBack, onDone }: { open: boolean; mode: ReadMode; onBack: () => void; onDone: () => void }) {
+/**
+ * Typed or dictated list → AI → editable review list → add all. (Receipts go through Spending's ScanReceiptSheet,
+ * which records the whole receipt and puts the food away.)
+ */
+export function ReadSheet({ open, onBack, onDone }: { open: boolean; onBack: () => void; onDone: () => void }) {
   const ai = useAiSettings();
   const categories = useCategories().data ?? [];
   const locations = useLocations().data ?? [];
   const addItems = useAddItems();
 
-  // Already shrunk: see addPhotos.
-  const [photos, setPhotos] = useState<{ blob: Blob; url: string }[]>([]);
-  const [preparing, setPreparing] = useState(false);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
@@ -34,10 +32,9 @@ export function ReadSheet({ open, mode, onBack, onDone }: { open: boolean; mode:
 
   useEffect(() => {
     if (!open) return;
-    setPhotos([]); setText(""); setResult(null); setRows([]); setError(null); setPurchasedAt(todayISO()); addItems.reset();
+    setText(""); setResult(null); setRows([]); setError(null); setPurchasedAt(todayISO()); addItems.reset();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, mode]);
-  useEffect(() => () => photos.forEach((p) => URL.revokeObjectURL(p.url)), [photos]);
+  }, [open]);
 
   const locFor = (kind: string): Location | undefined => locations.find((l) => l.kind === kind) ?? locations[0];
   const catById = useMemo(() => new Map(categories.map((c) => [c.id, c])), [categories]);
@@ -48,37 +45,10 @@ export function ReadSheet({ open, mode, onBack, onDone }: { open: boolean; mode:
     return suggestExpiry(catById.get(r.category), loc.kind, bought, null, r.source.product ?? undefined) ?? "";
   }
 
-  // Shrink right away, while the picker's files are still readable (iOS can discard them once the input is
-  // reset), and keep the small copies until "Read receipt".
-  async function addPhotos(files: File[]) {
-    setError(null);
-    setPreparing(true);
-    try {
-      const room = 4 - photos.length;
-      const added: { blob: Blob; url: string }[] = [];
-      for (const file of files.slice(0, room)) {
-        const blob = await shrinkImage(file);
-        added.push({ blob, url: URL.createObjectURL(blob) });
-      }
-      setPhotos((p) => [...p, ...added].slice(0, 4));
-    } catch (e) {
-      setError(e);
-    } finally {
-      setPreparing(false);
-    }
-  }
-
   async function read() {
     setBusy(true); setError(null);
     try {
-      let r: ReadResult;
-      if (mode === "receipt") {
-        const form = new FormData();
-        for (const p of photos) form.append("images", p.blob, "receipt.jpg");
-        r = await readReceipt(form);
-      } else {
-        r = await readText(text);
-      }
+      const r = await readText(text);
       const bought = r.purchasedAt ?? todayISO();
       setPurchasedAt(bought);
       setResult(r);
@@ -127,7 +97,7 @@ export function ReadSheet({ open, mode, onBack, onDone }: { open: boolean; mode:
   }
 
   const reviewing = !!result;
-  const title = reviewing ? (result.store ?? "Check these items") : mode === "receipt" ? "Scan a receipt" : "Type a list";
+  const title = reviewing ? "Check these items" : "Type a list";
 
   const footer = !ai.data?.configured ? undefined : reviewing ? (
     <div className="flex gap-2">
@@ -139,8 +109,8 @@ export function ReadSheet({ open, mode, onBack, onDone }: { open: boolean; mode:
   ) : (
     <div className="flex gap-2">
       <Button className="shrink-0" onClick={onBack}>Back</Button>
-      <Button className="flex-1" variant="primary" busy={busy} disabled={mode === "receipt" ? !photos.length : !text.trim()} onClick={read}>
-        <Sparkles className="size-4" />{busy ? "Reading…" : mode === "receipt" ? "Read receipt" : "Read list"}
+      <Button className="flex-1" variant="primary" busy={busy} disabled={!text.trim()} onClick={read}>
+        <Sparkles className="size-4" />{busy ? "Reading…" : "Read list"}
       </Button>
     </div>
   );
@@ -149,50 +119,18 @@ export function ReadSheet({ open, mode, onBack, onDone }: { open: boolean; mode:
     <Sheet open={open} onClose={onDone} title={title} footer={footer}>
       {!ai.data ? <Spinner /> : !ai.data.configured ? (
         <div className="flex flex-col items-start gap-3 text-sm">
-          <p>Reading receipts and lists uses an AI service. Pick one (DeepSeek, Claude, a local Ollama model…) in Settings first.</p>
+          <p>Reading lists uses an AI service. Pick one (DeepSeek, Claude, a local Ollama model…) in Settings first.</p>
           <Link to="/settings" onClick={onDone}><Button variant="primary"><Sparkles className="size-4" />Set up AI</Button></Link>
           <Button variant="ghost" onClick={onBack}>Back</Button>
         </div>
       ) : busy ? (
         <div className="flex flex-col items-center gap-3 py-10 text-center text-sm text-muted">
           <Spinner />
-          <p>Reading {mode === "receipt" ? "your receipt" : "your list"}… usually 10–30 seconds.</p>
+          <p>Reading your list… usually 10–30 seconds.</p>
         </div>
       ) : reviewing ? (
         <Review rows={rows} result={result} purchasedAt={purchasedAt} onDate={changeDate} update={update}
           categories={categories} locations={locations} catById={catById} />
-      ) : mode === "receipt" ? (
-        <div className="flex flex-col gap-3">
-          {photos.length > 0 && (
-            <div className="flex gap-2 overflow-x-auto pb-1">
-              {photos.map((p, i) => (
-                <div key={p.url} className="relative shrink-0">
-                  <img src={p.url} alt={`Receipt photo ${i + 1}`} className="h-36 w-24 rounded-xl border border-border object-cover" />
-                  <button type="button" aria-label="Remove photo" onClick={() => setPhotos((ps) => ps.filter((x) => x !== p))}
-                    className="absolute -right-1.5 -top-1.5 flex size-6 items-center justify-center rounded-full bg-text text-surface"><X className="size-3.5" /></button>
-                </div>
-              ))}
-            </div>
-          )}
-          {preparing ? (
-            <div className="flex min-h-28 items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-border text-sm text-muted">
-              <Spinner />Preparing photo…
-            </div>
-          ) : photos.length < 4 && (
-            <div className="grid grid-cols-2 gap-2">
-              <PhotoButton bare camera onFiles={addPhotos}
-                className="flex min-h-28 flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-border text-sm font-medium">
-                <Camera className="size-7 text-accent" />{photos.length ? "Another photo" : "Take photo"}
-              </PhotoButton>
-              <PhotoButton bare multiple onFiles={addPhotos}
-                className="flex min-h-28 flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-border text-sm font-medium">
-                <ImagePlus className="size-7 text-accent" />From photos
-              </PhotoButton>
-            </div>
-          )}
-          <p className="text-xs text-muted">Flat, well lit, whole width in frame. Long receipt? Take one photo per section, top to bottom (up to 4).</p>
-          {error != null && <ErrorText error={error} />}
-        </div>
       ) : (
         <div className="flex flex-col gap-2">
           <textarea value={text} onChange={(e) => setText(e.target.value)} rows={6} autoFocus maxLength={4000}
@@ -217,7 +155,7 @@ function Review({ rows, result, purchasedAt, onDate, update, categories, locatio
         <Input type="date" className="max-w-44" value={purchasedAt} max={todayISO()} onChange={(e) => onDate(e.target.value)} />
       </label>
       {result.note && <p className="rounded-xl bg-warn-soft p-3 text-sm text-warn">{result.note}</p>}
-      {!rows.length && <p className="text-sm text-muted">No food items found. Try a clearer photo, or type the list instead.</p>}
+      {!rows.length && <p className="text-sm text-muted">No food items found. Try writing the list a different way.</p>}
 
       <ul className="flex flex-col gap-2">
         {rows.map((r) => (

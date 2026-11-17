@@ -5,7 +5,9 @@ import { todayISO } from "@/core/dates";
 import { Button, Chip, cx, ErrorText, Field, Input, Sheet } from "@/core/ui";
 import { lookupBarcode, useAddItem, useCategories, useLocations, useProductSearch, type Product } from "./api";
 import { BarcodeScanner } from "./BarcodeScanner";
-import { ReadSheet, type ReadMode } from "./ReadSheet";
+import { ReadSheet } from "./ReadSheet";
+// Receipts are read by Spending, which records the whole receipt and puts the food away here.
+import { ScanReceiptSheet } from "@/modules/expenses/ScanReceiptSheet";
 import { guessCategory, suggestExpiry } from "./logic";
 
 interface Form {
@@ -41,7 +43,7 @@ export function AddItemSheet({ open, onClose, defaultLocationId }: { open: boole
   const [locationTouched, setLocationTouched] = useState(false);
   const [showMore, setShowMore] = useState(false);
   const [scanning, setScanning] = useState(false);
-  const [reading, setReading] = useState<ReadMode | null>(null);
+  const [reading, setReading] = useState<"receipt" | "text" | null>(null);
   const [scanNote, setScanNote] = useState<string | null>(null);
   const [added, setAdded] = useState<string[]>([]);
   const nameRef = useRef<HTMLInputElement>(null);
@@ -241,7 +243,8 @@ export function AddItemSheet({ open, onClose, defaultLocationId }: { open: boole
         </form>
       </Sheet>
       <BarcodeScanner open={open && scanning} onClose={() => setScanning(false)} onDetected={onDetected} />
-      <ReadSheet open={open && !!reading} mode={reading ?? "receipt"} onBack={() => setReading(null)} onDone={onClose} />
+      <ReadSheet open={open && reading === "text"} onBack={() => setReading(null)} onDone={onClose} />
+      <ScanReceiptSheet open={open && reading === "receipt"} onBack={() => setReading(null)} onClose={onClose} />
     </>
   );
 }

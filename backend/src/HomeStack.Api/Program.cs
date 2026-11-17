@@ -1,5 +1,6 @@
 using HomeStack.Api;
 using HomeStack.Core;
+using HomeStack.Modules.Expenses;
 using HomeStack.Modules.Inventory;
 using HomeStack.Modules.Meals;
 using HomeStack.Modules.Shopping;
@@ -15,6 +16,7 @@ IModule[] modules =
     new InventoryModule(),
     new ShoppingModule(),
     new MealsModule(),
+    new ExpensesModule(),
 ];
 
 builder.Services.AddHomeStack(builder.Configuration, modules);

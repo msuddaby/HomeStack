@@ -187,6 +187,207 @@ namespace HomeStack.Api.Migrations
                     b.ToTable("notification_settings", (string)null);
                 });
 
+            modelBuilder.Entity("HomeStack.Modules.Expenses.ItemCode", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("HouseholdId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("ItemId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ItemId");
+
+                    b.HasIndex("StoreId");
+
+                    b.HasIndex("HouseholdId", "StoreId", "Code")
+                        .IsUnique();
+
+                    b.ToTable("expenses_item_codes", (string)null);
+                });
+
+            modelBuilder.Entity("HomeStack.Modules.Expenses.Receipt", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("HouseholdId")
+                        .HasColumnType("INTEGER");
+
+                    b.PrimitiveCollection<string>("ImageIds")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateOnly>("PurchasedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("StoreId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<decimal?>("Subtotal")
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal?>("Tax")
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal>("Total")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StoreId");
+
+                    b.HasIndex("HouseholdId", "PurchasedAt");
+
+                    b.ToTable("expenses_receipts", (string)null);
+                });
+
+            modelBuilder.Entity("HomeStack.Modules.Expenses.ReceiptLine", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<decimal>("Amount")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Category")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Code")
+                        .HasMaxLength(40)
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal?>("Discount")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("ItemId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("TEXT");
+
+                    b.Property<double>("Quantity")
+                        .HasColumnType("REAL");
+
+                    b.Property<string>("Raw")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("ReceiptId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Sort")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Unit")
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal?>("UnitPrice")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ItemId");
+
+                    b.HasIndex("ReceiptId");
+
+                    b.ToTable("expenses_receipt_lines", (string)null);
+                });
+
+            modelBuilder.Entity("HomeStack.Modules.Expenses.Store", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("HouseholdId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("HouseholdId", "Name");
+
+                    b.ToTable("expenses_stores", (string)null);
+                });
+
+            modelBuilder.Entity("HomeStack.Modules.Expenses.TrackedItem", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Category")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("HouseholdId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("ProductId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("SkipInventory")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("HouseholdId", "Name");
+
+                    b.ToTable("expenses_items", (string)null);
+                });
+
             modelBuilder.Entity("HomeStack.Modules.Inventory.InventoryEvent", b =>
                 {
                     b.Property<int>("Id")
@@ -625,6 +826,47 @@ namespace HomeStack.Api.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("HomeStack.Modules.Expenses.ItemCode", b =>
+                {
+                    b.HasOne("HomeStack.Modules.Expenses.TrackedItem", null)
+                        .WithMany()
+                        .HasForeignKey("ItemId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("HomeStack.Modules.Expenses.Store", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("HomeStack.Modules.Expenses.Receipt", b =>
+                {
+                    b.HasOne("HomeStack.Modules.Expenses.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("HomeStack.Modules.Expenses.ReceiptLine", b =>
+                {
+                    b.HasOne("HomeStack.Modules.Expenses.TrackedItem", "Item")
+                        .WithMany()
+                        .HasForeignKey("ItemId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("HomeStack.Modules.Expenses.Receipt", null)
+                        .WithMany("Lines")
+                        .HasForeignKey("ReceiptId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Item");
+                });
+
             modelBuilder.Entity("HomeStack.Modules.Inventory.InventoryItem", b =>
                 {
                     b.HasOne("HomeStack.Modules.Inventory.Location", "Location")
@@ -661,6 +903,11 @@ namespace HomeStack.Api.Migrations
                         .HasForeignKey("RecipeId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("HomeStack.Modules.Expenses.Receipt", b =>
+                {
+                    b.Navigation("Lines");
                 });
 
             modelBuilder.Entity("HomeStack.Modules.Meals.Recipe", b =>

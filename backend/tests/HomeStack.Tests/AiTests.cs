@@ -160,7 +160,7 @@ public class AiTests
     }
 
     [Fact]
-    public async Task Receipt_is_cleaned_up_matched_and_can_be_added_in_one_go()
+    public async Task Typed_list_is_cleaned_up_matched_and_can_be_added_in_one_go()
     {
         using var app = new TestApp();
         var c = await app.SetupClientAsync();
@@ -185,11 +185,7 @@ public class AiTests
             skipped = new[] { "PAPER TOWEL" },
         }));
 
-        using var form = new MultipartFormDataContent();
-        var photo = new ByteArrayContent([0xFF, 0xD8, 0xFF, 0xE0]);
-        photo.Headers.ContentType = new MediaTypeHeaderValue("image/jpeg");
-        form.Add(photo, "images", "receipt.jpg");
-        var result = await (await c.PostAsync("/api/inventory/read/receipt", form)).Read<ReadResultDto>();
+        var result = await (await c.Post("/api/inventory/read/text", new { text = "2 L milk, frozen peas, chicken thighs" })).Read<ReadResultDto>();
 
         Assert.Equal(2, app.Ai.Requests.Count);
         Assert.Contains("Milk 2%", app.Ai.Requests[1].Body); // known product names are offered to the model

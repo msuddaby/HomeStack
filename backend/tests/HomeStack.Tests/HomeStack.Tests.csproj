@@ -22,6 +22,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\HomeStack.Api\HomeStack.Api.csproj" />
+    <ProjectReference Include="..\..\src\HomeStack.Modules.Expenses\HomeStack.Modules.Expenses.csproj" />
   </ItemGroup>
 
 </Project>

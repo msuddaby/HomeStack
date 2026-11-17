@@ -102,23 +102,8 @@ public class InventoryModule : IModule
         g.MapPost("/items", (AddItemRequest req, InventoryService s) => s.AddItemAsync(req)).Validate<AddItemRequest>();
         g.MapPost("/items/batch", (AddItemsRequest req, InventoryService s) => s.AddItemsAsync(req.Items)).Validate<AddItemsRequest>();
 
-        // AI reading: receipt photos or a typed list -> items to review (nothing is added here).
-        g.MapPost("/read/receipt", async (IFormFileCollection files, GroceryReader reader, CancellationToken ct) =>
-        {
-            var images = files.GetFiles("images");
-            if (images.Count is 0 or > GroceryReader.MaxImages)
-                throw new BadRequestException($"Send 1 to {GroceryReader.MaxImages} photos.");
-            var list = new List<HomeStack.Core.Ai.AiImage>();
-            foreach (var f in images)
-            {
-                if (!GroceryReader.ImageTypes.Contains(f.ContentType)) throw new BadRequestException("Photos must be JPEG, PNG or WebP.");
-                if (f.Length > GroceryReader.MaxImageBytes) throw new BadRequestException("Each photo must be under 8 MB.");
-                using var ms = new MemoryStream();
-                await f.CopyToAsync(ms, ct);
-                list.Add(new(ms.ToArray(), f.ContentType));
-            }
-            return await reader.ReadReceiptAsync(list, ct);
-        }).DisableAntiforgery();
+        // AI reading: a typed list -> items to review (nothing is added here). Receipts are read by the expenses
+        // module, which records the whole receipt and puts the food into inventory.
         g.MapPost("/read/text", (ReadTextRequest req, GroceryReader reader, CancellationToken ct) => reader.ReadTextAsync(req.Text, ct))
             .Validate<ReadTextRequest>();
         g.MapPut("/items/{id:int}", (int id, UpdateItemRequest req, InventoryService s) => s.UpdateItemAsync(id, req)).Validate<UpdateItemRequest>();
