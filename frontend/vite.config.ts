@@ -35,6 +35,8 @@ export default defineConfig({
         navigateFallbackDenylist: [/^\/api\//],
         globPatterns: ["**/*.{js,css,html,svg,png,woff2,wasm}"],
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
+        // Showing notifications and opening them (public/push-sw.js).
+        importScripts: ["/push-sw.js"],
       },
     }),
   ],

@@ -22,6 +22,7 @@ public class ExpensesModule : IModule
         services.AddScoped<ReceiptReader>();
         services.AddScoped<PeopleService>();
         services.AddScoped<BillsService>();
+        services.AddScoped<ExpenseNotifier>();
         services.AddScoped<HomeStack.Core.Notifications.IDigestSource, ExpensesDigest>();
         services.AddScoped<HomeStack.Core.Notifications.IDigestSource, BillsDigest>();
         services.AddHostedService<RecurringWorker>();
@@ -163,6 +164,7 @@ public class ExpensesModule : IModule
         g.MapDelete("/people/{id:int}", async (int id, PeopleService s) => { await s.ArchiveAsync(id); return Results.NoContent(); });
         g.MapPut("/receipts/{id:int}/split", (int id, SetSplitRequest req, ExpensesService s) => s.SetSplitAsync(id, req)).Validate<SetSplitRequest>();
         g.MapGet("/balances", (PeopleService s) => s.BalancesAsync());
+        g.MapPost("/remind", (RemindRequest req, ExpenseNotifier n, CancellationToken ct) => n.RemindAsync(req, ct)).Validate<RemindRequest>();
         g.MapPut("/shares/{id:int}/received", async (int id, MarkReceivedRequest req, PeopleService s) =>
         {
             await s.MarkReceivedAsync(id, req.Received);

@@ -141,13 +141,21 @@ public record SetSplitRequest(int? PaidByPersonId, List<SplitPartDto>? Split, Li
     }
 }
 
-public record ShareDto(int Id, int PersonId, string Person, decimal Amount, DateTime? ReceivedAt);
+/// <summary>What someone owes for an expense; <see cref="Lines"/> is their part of each line, before tax.</summary>
+public record ShareDto(int Id, int PersonId, string Person, decimal Amount, DateTime? ReceivedAt, List<ShareLineDto> Lines,
+    DateTime? RemindedAt = null, bool IsMember = false);
+/// <summary>One person's part of a receipt line (<see cref="Amount"/>) out of the whole line (<see cref="LineAmount"/>).</summary>
+public record ShareLineDto(int LineId, string Name, decimal Amount, decimal LineAmount);
 
-public record OwedItemDto(int ShareId, int ReceiptId, string What, DateOnly Date, decimal Amount, DateTime? ReceivedAt);
+public record OwedItemDto(int ShareId, int ReceiptId, string What, DateOnly Date, decimal Amount, DateTime? ReceivedAt, DateTime? RemindedAt);
 /// <summary>What one person owes another, outstanding first.</summary>
-public record BalanceDto(int PersonId, string Person, int OwedToPersonId, string OwedTo, decimal Outstanding, List<OwedItemDto> Items);
+/// <param name="IsMember">On HomeStack, so they can be sent a reminder.</param>
+public record BalanceDto(int PersonId, string Person, int OwedToPersonId, string OwedTo, decimal Outstanding, List<OwedItemDto> Items, bool IsMember);
 public record BalancesDto(bool CanMarkReceived, int? MyPersonId, List<BalanceDto> Balances);
 public record MarkReceivedRequest(bool Received);
+/// <summary>Remind <see cref="PersonId"/> of what they owe <see cref="OwedToPersonId"/>: everything, or one share.</summary>
+public record RemindRequest(int PersonId, int OwedToPersonId, int? ShareId = null);
+public record RemindResultDto(int Devices, DateTime RemindedAt);
 
 // ---------- Bills ----------
 

@@ -1,13 +1,13 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
-import { ArrowLeft, FileText, ImagePlus, Pencil, Trash2, Users } from "lucide-react";
+import { ArrowLeft, BellRing, ChevronDown, FileText, ImagePlus, Pencil, Trash2, Users } from "lucide-react";
 import { shrinkImage } from "@/core/ai";
 import { errorMessage } from "@/core/api";
 import { shortDate, todayISO } from "@/core/dates";
-import { Button, Card, Chip, ErrorText, Field, Input, PhotoButton, Sheet, Spinner } from "@/core/ui";
+import { Button, Card, Chip, cx, ErrorText, Field, Input, PhotoButton, Sheet, Spinner } from "@/core/ui";
 import {
-  useAddReceiptPhotos, useBalances, useBillPaid, useDeleteReceipt, useExpenseCategories, useMarkReceived, usePeople, useReceipt, useSetSplit,
-  useUpdateReceipt, type Receipt,
+  canRemindAgain, remindedLabel, useAddReceiptPhotos, useBalances, useRemind, useBillPaid, useDeleteReceipt, useExpenseCategories, useMarkReceived, usePeople, useReceipt, useSetSplit,
+  useUpdateReceipt, type Receipt, type Share,
 } from "./api";
 import { money } from "./format";
 import { fromParts, noSplit, PeopleChips, SplitEditor, toParts, type SplitValue } from "./Split";
@@ -147,29 +147,77 @@ function BillCard({ r }: { r: Receipt }) {
   );
 }
 
-/** Who paid and what everyone else owes them; admins tick shares off as received. */
+/** Who paid and what everyone else owes them, item by item; admins tick shares off as received. */
 function SharesCard({ r }: { r: Receipt }) {
   const canMark = useBalances().data?.canMarkReceived ?? false;
   const mark = useMarkReceived();
+  // The item breakdown only means something when there's more than one line.
+  const itemised = r.lines.length > 1;
   return (
     <Card title={`Paid by ${r.paidBy ?? "?"}`}>
       {r.shares.length ? (
         <ul className="flex flex-col gap-1.5 text-sm">
           {r.shares.map((s) => (
-            <li key={s.id} className="flex items-center gap-2">
-              {canMark && (
-                <input type="checkbox" checked={!!s.receivedAt} disabled={mark.isPending} aria-label={`Received from ${s.person}`}
-                  onChange={(e) => mark.mutate({ shareId: s.id, received: e.target.checked })} className="size-5 accent-[var(--color-accent)]" />
-              )}
-              <span className="min-w-0 flex-1">{s.person} owes</span>
-              {s.receivedAt && <Chip tone="accent">Received</Chip>}
-              <span className="tabular-nums">{money(s.amount)}</span>
-            </li>
+            <ShareRow key={s.id} s={s} payerId={r.paidByPersonId!} itemised={itemised} canMark={canMark} busy={mark.isPending}
+              onMark={(received) => mark.mutate({ shareId: s.id, received })} />
           ))}
         </ul>
       ) : <p className="text-sm text-muted">Nobody else owes anything for this.</p>}
       {mark.error && <ErrorText error={mark.error} />}
     </Card>
+  );
+}
+
+/** One person's share; for a receipt with several lines, tap to see which items it's for. */
+function ShareRow({ s, payerId, itemised, canMark, busy, onMark }: {
+  s: Share; payerId: number; itemised: boolean; canMark: boolean; busy: boolean; onMark: (received: boolean) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const remind = useRemind();
+  const canRemind = canMark && s.isMember && !s.receivedAt;
+  const extra = Math.round((s.amount - s.lines.reduce((t, l) => t + l.amount, 0)) * 100) / 100;
+  const label = <><span className="min-w-0 flex-1 truncate">{s.person} owes</span>{s.receivedAt && <Chip tone="accent">Received</Chip>}</>;
+  return (
+    <li>
+      <div className="flex items-center gap-2">
+        {canMark && (
+          <input type="checkbox" checked={!!s.receivedAt} disabled={busy} aria-label={`Received from ${s.person}`}
+            onChange={(e) => onMark(e.target.checked)} className="size-5 shrink-0 accent-[var(--color-accent)]" />
+        )}
+        {itemised ? (
+          <button type="button" onClick={() => setOpen(!open)} aria-expanded={open} className="flex min-w-0 flex-1 items-center gap-2 text-left">
+            {label}<ChevronDown className={cx("size-4 shrink-0 text-muted transition-transform", open && "rotate-180")} />
+          </button>
+        ) : label}
+        <span className="tabular-nums">{money(s.amount)}</span>
+        {canRemind && (
+          <button type="button" aria-label={`Remind ${s.person}`} title={s.remindedAt ? `Reminded ${remindedLabel(s.remindedAt)}` : `Remind ${s.person}`}
+            disabled={remind.isPending || !canRemindAgain(s.remindedAt)} onClick={() => remind.mutate({ personId: s.personId, owedToPersonId: payerId, shareId: s.id })}
+            className="-my-1 grid size-8 shrink-0 place-items-center rounded-lg text-muted hover:bg-surface-2 disabled:opacity-40">
+            <BellRing className="size-4" />
+          </button>
+        )}
+      </div>
+      {canRemind && s.remindedAt && <p className={cx("text-xs text-muted", canMark && "pl-7")}>Reminded {remindedLabel(s.remindedAt)}</p>}
+      {remind.error && <p className="text-xs text-danger">{remind.error.message}</p>}
+      {itemised && open && (
+        <ul className={cx("mt-1 mb-1 flex flex-col gap-0.5 border-l-2 border-border pl-3 text-xs", canMark && "ml-2.5")}>
+          {s.lines.map((l) => (
+            <li key={l.lineId} className="flex items-baseline gap-2">
+              <span className="min-w-0 flex-1 truncate">{l.name}</span>
+              {l.amount !== l.lineAmount && <span className="shrink-0 text-muted">of {money(l.lineAmount)}</span>}
+              <span className="w-14 shrink-0 text-right tabular-nums">{money(l.amount)}</span>
+            </li>
+          ))}
+          {extra !== 0 && (
+            <li className="flex items-baseline gap-2 text-muted">
+              <span className="min-w-0 flex-1">Their part of tax{extra < 0 ? " & discounts" : ""}</span>
+              <span className="w-14 shrink-0 text-right tabular-nums">{money(extra)}</span>
+            </li>
+          )}
+        </ul>
+      )}
+    </li>
   );
 }
 

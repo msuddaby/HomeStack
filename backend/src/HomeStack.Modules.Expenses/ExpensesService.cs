@@ -7,7 +7,7 @@ using Microsoft.EntityFrameworkCore;
 namespace HomeStack.Modules.Expenses;
 
 public class ExpensesService(HomeStackDbContext db, ICurrentUser me, TimeProvider time, ImageService images, InventoryService inventory,
-    PeopleService people, FileService files)
+    PeopleService people, FileService files, ExpenseNotifier notifier)
 {
     public const int MaxPhotos = 4;
     /// <summary>Receipt photos stay readable for returns and warranties.</summary>
@@ -103,7 +103,7 @@ public class ExpensesService(HomeStackDbContext db, ICurrentUser me, TimeProvide
                 }));
             }
         }
-        SplitMath.ApplyShares(receipt);
+        var owed = SplitMath.ApplyShares(receipt);
         db.Add(receipt);
         await db.SaveChangesAsync();
 
@@ -113,6 +113,7 @@ public class ExpensesService(HomeStackDbContext db, ICurrentUser me, TimeProvide
             item.ProductId ??= dto.Product.Id;
         await db.SaveChangesAsync();
         await tx.CommitAsync();
+        await notifier.OwedAsync([(receipt, owed)]);
 
         return (await GetReceiptAsync(receipt.Id)) with { AddedToInventory = added.Count };
     }
@@ -141,8 +142,9 @@ public class ExpensesService(HomeStackDbContext db, ICurrentUser me, TimeProvide
         r.Split = SplitMath.Parts(req.Split);
         var anySplit = r.Split.Count > 0 || r.Lines.Any(l => l.Split.Count > 0);
         r.PaidByPersonId = await PayerAsync(req.PaidByPersonId, anySplit, req.Split, (req.Lines ?? []).SelectMany(l => l.Split ?? []));
-        SplitMath.ApplyShares(r);
+        var owed = SplitMath.ApplyShares(r);
         await db.SaveChangesAsync();
+        await notifier.OwedAsync([(r, owed)]);
         return await GetReceiptAsync(id);
     }
 
@@ -206,9 +208,10 @@ public class ExpensesService(HomeStackDbContext db, ICurrentUser me, TimeProvide
             // Not a tracked item: one-off amounts would clutter the item list.
             Lines = [new ReceiptLine { Name = req.Description.Trim(), Category = req.Category, Amount = req.Amount }],
         };
-        SplitMath.ApplyShares(receipt);
+        var owed = SplitMath.ApplyShares(receipt);
         db.Add(receipt);
         await db.SaveChangesAsync();
+        await notifier.OwedAsync([(receipt, owed)]);
         return await GetReceiptAsync(receipt.Id);
     }
 
@@ -312,13 +315,16 @@ public class ExpensesService(HomeStackDbContext db, ICurrentUser me, TimeProvide
         var r = await Receipts.Include(x => x.Store).Include(x => x.Lines).ThenInclude(l => l.Split).Include(x => x.Split).Include(x => x.Shares)
             .AsSplitQuery().SingleOrDefaultAsync(x => x.Id == id) ?? throw new NotFoundException("Receipt not found");
         var names = r.PaidByPersonId is null ? [] : await people.NamesAsync();
+        var breakdown = SplitMath.Breakdown(r);
+        var members = r.Shares.Count == 0 ? [] : await db.Set<Person>().Where(p => p.HouseholdId == Hid && p.UserId != null).Select(p => p.Id).ToListAsync();
         return new ReceiptDto(r.Id, r.Store?.Name, r.PurchasedAt, r.Subtotal, r.Tax, r.Total, r.Note, r.Source,
             r.ImageIds.Select(i => StoredImage.Src(i, null)!).ToList(),
             r.Lines.OrderBy(l => l.Sort).Select(l => new ReceiptLineDto(l.Id, l.ItemId, l.Code, l.Name, l.Raw, l.Category, l.Quantity,
                 l.Unit, l.UnitPrice, l.Amount, l.Discount, SplitMath.Dtos(l.Split))).ToList(),
             r.CreatedAt,
             r.PaidByPersonId, r.PaidByPersonId is int p ? names.GetValueOrDefault(p) : null, SplitMath.Dtos(r.Split),
-            r.Shares.OrderBy(s => names.GetValueOrDefault(s.PersonId)).Select(s => new ShareDto(s.Id, s.PersonId, names.GetValueOrDefault(s.PersonId, "?"), s.Amount, s.ReceivedAt)).ToList(),
+            r.Shares.OrderBy(s => names.GetValueOrDefault(s.PersonId)).Select(s => new ShareDto(s.Id, s.PersonId, names.GetValueOrDefault(s.PersonId, "?"), s.Amount, s.ReceivedAt,
+                breakdown.GetValueOrDefault(s.PersonId) ?? [], s.RemindedAt, members.Contains(s.PersonId))).ToList(),
             r.DueDate, r.BillPaidOn, r.RecurringId, r.DocumentId is Guid doc ? StoredFile.Src(doc) : null);
     }
 

@@ -37,7 +37,17 @@ export interface ReceiptDraft {
 /** One person's part of a split: weight 1 each for equal, or the amounts themselves for custom amounts. */
 export interface SplitPart { personId: number; weight: number }
 export interface Person { id: number; name: string; userId: number | null; archived: boolean; isMe: boolean }
-export interface Share { id: number; personId: number; person: string; amount: number; receivedAt: string | null }
+export interface Share {
+  id: number; personId: number; person: string; amount: number; receivedAt: string | null;
+  /** Their part of each line, before tax; the rest of `amount` is tax and anything not itemised. */
+  lines: ShareLine[];
+  /** When an admin last sent them a reminder. */
+  remindedAt: string | null;
+  /** On HomeStack, so they can be reminded. */
+  isMember: boolean;
+}
+/** One person's part (`amount`) of a receipt line (`lineAmount`). */
+export interface ShareLine { lineId: number; name: string; amount: number; lineAmount: number }
 
 export interface SaveLine {
   itemId: number | null; code: string | null; name: string; raw: string | null; category: string; quantity: number; unit: string | null;
@@ -72,8 +82,12 @@ export interface Receipt {
   document: string | null;
 }
 
-export interface OwedItem { shareId: number; receiptId: number; what: string; date: string; amount: number; receivedAt: string | null }
-export interface Balance { personId: number; person: string; owedToPersonId: number; owedTo: string; outstanding: number; items: OwedItem[] }
+export interface OwedItem { shareId: number; receiptId: number; what: string; date: string; amount: number; receivedAt: string | null; remindedAt: string | null }
+export interface Balance {
+  personId: number; person: string; owedToPersonId: number; owedTo: string; outstanding: number; items: OwedItem[];
+  /** On HomeStack, so they can be reminded. */
+  isMember: boolean;
+}
 export interface Balances { canMarkReceived: boolean; myPersonId: number | null; balances: Balance[] }
 
 export interface RecurringRef { id: number; name: string; paidByPersonId: number | null; split: SplitPart[] }
@@ -170,6 +184,22 @@ export const useBalances = () => useQuery({ queryKey: [...KEY, "balances"], quer
 export const useMarkReceived = () =>
   useExpensesMutation(({ shareId, received }: { shareId: number; received: boolean }) =>
     api(`/expenses/shares/${shareId}/received`, { method: "PUT", body: { received } }));
+
+/** Admins: notify someone of what they owe (everything they owe that person, or one share). Once an hour at most. */
+export const useRemind = () =>
+  useExpensesMutation((v: { personId: number; owedToPersonId: number; shareId?: number }) =>
+    api<{ devices: number; remindedAt: string }>("/expenses/remind", { body: v }));
+
+/** "just now", "25 min ago", "3 h ago", "Nov 14". */
+export function remindedLabel(iso: string) {
+  const mins = (Date.now() - new Date(iso).getTime()) / 60000;
+  if (mins < 2) return "just now";
+  if (mins < 60) return `${Math.round(mins)} min ago`;
+  if (mins < 24 * 60) return `${Math.round(mins / 60)} h ago`;
+  return new Date(iso).toLocaleDateString([], { month: "short", day: "numeric" });
+}
+/** Reminders are allowed once an hour; mirrors the server. */
+export const canRemindAgain = (iso: string | null) => !iso || Date.now() - new Date(iso).getTime() >= 60 * 60000;
 
 // ---- Bills ----
 export const readBill = (form: FormData) => api<BillDraft>("/expenses/bills/read", { body: form });

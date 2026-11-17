@@ -208,6 +208,9 @@ namespace HomeStack.Api.Migrations
                     b.Property<DateOnly?>("LastSentOn")
                         .HasColumnType("TEXT");
 
+                    b.Property<DateOnly?>("PushSentOn")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("ServerUrl")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -221,6 +224,83 @@ namespace HomeStack.Api.Migrations
                     b.HasKey("HouseholdId");
 
                     b.ToTable("notification_settings", (string)null);
+                });
+
+            modelBuilder.Entity("HomeStack.Core.Notifications.PushSubscription", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("AppUrl")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Auth")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Device")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Endpoint")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("HouseholdId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("LastError")
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("LastSentAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("P256dh")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Endpoint")
+                        .IsUnique();
+
+                    b.HasIndex("HouseholdId");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("push_subscriptions", (string)null);
+                });
+
+            modelBuilder.Entity("HomeStack.Core.Notifications.VapidKeys", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("PrivateKey")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PublicKey")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("vapid_keys", (string)null);
                 });
 
             modelBuilder.Entity("HomeStack.Modules.Expenses.ItemCode", b =>
@@ -312,6 +392,9 @@ namespace HomeStack.Api.Migrations
 
                     b.Property<string>("Note")
                         .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateOnly?>("OverdueNotifiedOn")
                         .HasColumnType("TEXT");
 
                     b.Property<int?>("PaidByPersonId")
@@ -491,6 +574,9 @@ namespace HomeStack.Api.Migrations
 
                     b.Property<int?>("ReceivedByUserId")
                         .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("RemindedAt")
+                        .HasColumnType("TEXT");
 
                     b.HasKey("Id");
 
@@ -1044,6 +1130,21 @@ namespace HomeStack.Api.Migrations
                     b.HasOne("HomeStack.Core.Data.Household", null)
                         .WithOne()
                         .HasForeignKey("HomeStack.Core.Notifications.NotificationSettings", "HouseholdId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("HomeStack.Core.Notifications.PushSubscription", b =>
+                {
+                    b.HasOne("HomeStack.Core.Data.Household", null)
+                        .WithMany()
+                        .HasForeignKey("HouseholdId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("HomeStack.Core.Data.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });

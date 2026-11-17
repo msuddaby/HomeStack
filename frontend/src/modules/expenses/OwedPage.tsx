@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { Link } from "react-router";
 import { shortDate } from "@/core/dates";
-import { Card, Chip, cx, Empty, ErrorText, Spinner } from "@/core/ui";
-import { useBalances, useMarkReceived, type Balance } from "./api";
+import { Button, Card, Chip, cx, Empty, ErrorText, Spinner } from "@/core/ui";
+import { BellRing } from "lucide-react";
+import { canRemindAgain, remindedLabel, useBalances, useMarkReceived, useRemind, type Balance } from "./api";
 import { money } from "./format";
 
 /** Who owes whom for split expenses. Admins tick shares off as they're paid back. */
@@ -67,6 +68,23 @@ function BalanceCard({ b, me, canMark, showReceived, onMark, busyId }: {
           </li>
         ))}
       </ul>
+      {canMark && b.isMember && b.outstanding > 0 && b.personId !== me && <RemindRow b={b} />}
     </Card>
+  );
+}
+
+/** Admins send a notification to someone who still owes (everything they owe this person). */
+function RemindRow({ b }: { b: Balance }) {
+  const remind = useRemind();
+  const last = b.items.filter((i) => !i.receivedAt).map((i) => i.remindedAt).filter((x): x is string => !!x).sort().at(-1) ?? null;
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-border pt-2">
+      <Button variant="ghost" className="min-h-9 px-2 text-xs" busy={remind.isPending} disabled={!canRemindAgain(last)}
+        onClick={() => remind.mutate({ personId: b.personId, owedToPersonId: b.owedToPersonId })}>
+        <BellRing className="size-4" />Remind {b.person}
+      </Button>
+      {last && <span className="text-xs text-muted">Reminded {remindedLabel(last)}</span>}
+      {remind.error && <p className="w-full text-xs text-danger">{remind.error.message}</p>}
+    </div>
   );
 }

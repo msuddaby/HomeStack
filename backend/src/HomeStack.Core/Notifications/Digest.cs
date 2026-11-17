@@ -28,13 +28,17 @@ public class NotificationSettings
     public int HouseholdId { get; set; }
     public bool Enabled { get; set; }
     public string ServerUrl { get; set; } = "https://ntfy.sh";
+    /// <summary>The ntfy topic; empty when the household only uses notifications on their devices.</summary>
     public string Topic { get; set; } = "";
     public string? AccessToken { get; set; }
     /// <summary>Local hour (0–23) the daily digest goes out.</summary>
     public int DigestHour { get; set; } = 8;
     /// <summary>Where the app is reached from (captured when settings are saved); tapping the notification opens it.</summary>
     public string? AppUrl { get; set; }
+    /// <summary>The day the digest last went to ntfy (or there was nothing to send, or no ntfy topic).</summary>
     public DateOnly? LastSentOn { get; set; }
+    /// <summary>The day the digest last went to members' devices (Web Push).</summary>
+    public DateOnly? PushSentOn { get; set; }
     public DateTime? LastSentAt { get; set; }
     public string? LastError { get; set; }
 

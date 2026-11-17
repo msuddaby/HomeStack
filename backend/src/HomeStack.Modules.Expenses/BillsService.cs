@@ -14,7 +14,8 @@ namespace HomeStack.Modules.Expenses;
 /// Bills (uploaded as a PDF or photo, read by AI), fixed recurring payments (recorded automatically on the day) and
 /// expected bills (recurring, amount varies: missing until uploaded).
 /// </summary>
-public class BillsService(HomeStackDbContext db, ICurrentUser me, TimeProvider time, AiService ai, ExpensesService expenses, PeopleService people)
+public class BillsService(HomeStackDbContext db, ICurrentUser me, TimeProvider time, AiService ai, ExpensesService expenses, PeopleService people,
+    ExpenseNotifier notifier)
 {
     public const int MaxImages = 4;
     public const long MaxFileBytes = 15 * 1024 * 1024;
@@ -131,7 +132,7 @@ public class BillsService(HomeStackDbContext db, ICurrentUser me, TimeProvider t
             PaidByPersonId = payer, Split = SplitMath.Parts(req.Split),
             Lines = [new ReceiptLine { Name = Clean(req.Description, 120) ?? $"{req.Payee.Trim()} bill", Category = req.Category, Amount = req.Amount }],
         };
-        SplitMath.ApplyShares(receipt);
+        var owed = SplitMath.ApplyShares(receipt);
         db.Add(receipt);
         // This period's bill is in: expect the next one a period later.
         if (recurring is not null && recurring.Amount is null)
@@ -141,6 +142,7 @@ public class BillsService(HomeStackDbContext db, ICurrentUser me, TimeProvider t
         }
         await db.SaveChangesAsync();
         await tx.CommitAsync();
+        await notifier.OwedAsync([(receipt, owed)]);
         return await expenses.GetReceiptAsync(receipt.Id);
     }
 
@@ -225,7 +227,7 @@ public class BillsService(HomeStackDbContext db, ICurrentUser me, TimeProvider t
     {
         var today = time.Today();
         var due = await Recurrings.Include(r => r.Split).Where(r => r.Active && r.Amount != null && r.NextDate <= today).ToListAsync(ct);
-        var posted = 0;
+        var posted = new List<(Receipt, IReadOnlyList<Share>)>();
         foreach (var r in due)
         {
             var store = await expenses.GetOrCreateStoreAsync(r.Payee);
@@ -238,14 +240,14 @@ public class BillsService(HomeStackDbContext db, ICurrentUser me, TimeProvider t
                     Split = r.Split.Select(p => new SplitPart { PersonId = p.PersonId, Weight = p.Weight }).ToList(),
                     Lines = [new ReceiptLine { Name = r.Name, Category = r.Category, Amount = r.Amount.Value }],
                 };
-                SplitMath.ApplyShares(receipt);
+                posted.Add((receipt, SplitMath.ApplyShares(receipt)));
                 db.Add(receipt);
                 r.NextDate = NextAfter(r.NextDate, r.Frequency, r.DayOfMonth);
-                posted++;
             }
         }
         await db.SaveChangesAsync(ct);
-        return posted;
+        await notifier.OwedAsync(posted, ct);
+        return posted.Count;
     }
 
     /// <summary>Unpaid bills due, fixed payments coming up and expected bills, within <paramref name="days"/> days (plus anything overdue).</summary>
@@ -278,21 +280,29 @@ public class BillsService(HomeStackDbContext db, ICurrentUser me, TimeProvider t
     }
 }
 
-/// <summary>Records fixed recurring payments on their day, for every household.</summary>
-internal sealed class RecurringWorker(IServiceScopeFactory scopes, IConfiguration config, ILogger<RecurringWorker> logger)
+/// <summary>
+/// For every household: records fixed recurring payments on their day, and (from the household's reminder hour,
+/// so nobody's woken at midnight) tells members about bills that have just gone overdue.
+/// </summary>
+internal sealed class RecurringWorker(IServiceScopeFactory scopes, IConfiguration config, TimeProvider time, ILogger<RecurringWorker> logger)
     : PeriodicWorker(scopes, config, logger)
 {
     protected override TimeSpan Interval => TimeSpan.FromHours(1);
 
     protected override async Task TickAsync(IServiceProvider services, CancellationToken ct)
     {
-        var households = await services.GetRequiredService<HomeStackDbContext>().Households.Select(h => h.Id).ToListAsync(ct);
+        var db = services.GetRequiredService<HomeStackDbContext>();
+        var households = await db.Households.Select(h => h.Id).ToListAsync(ct);
+        var hours = await db.Set<NotificationSettings>().ToDictionaryAsync(s => s.HouseholdId, s => s.DigestHour, ct);
+        var hour = time.GetLocalNow().Hour;
         foreach (var id in households)
         {
             await using var scope = Scopes.CreateAsyncScope();
             scope.ServiceProvider.GetRequiredService<HouseholdScope>().Enter(id);
             var posted = await scope.ServiceProvider.GetRequiredService<BillsService>().PostDueAsync(ct);
             if (posted > 0) logger.LogInformation("Recorded {Count} recurring payments for household {Household}", posted, id);
+            if (hour >= hours.GetValueOrDefault(id, 8))
+                await scope.ServiceProvider.GetRequiredService<ExpenseNotifier>().OverdueBillsAsync(ct);
         }
     }
 }

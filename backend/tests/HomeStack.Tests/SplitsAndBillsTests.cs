@@ -129,6 +129,9 @@ public class SplitsAndBillsTests
         Assert.Equal(9.90m, shares[s]); // (6 + 3) × 33/30
         Assert.Equal(13.20m, shares[j]); // (6 + 6) × 33/30
         Assert.False(shares.ContainsKey(a)); // the payer doesn't owe themselves
+        // What each share is made of: their part of each line, before tax.
+        Assert.Equal([("Detergent", 6m, 18m), ("Chips", 3m, 6m)], r.Shares.Single(x => x.PersonId == s).Lines.Select(l => (l.Name, l.Amount, l.LineAmount)));
+        Assert.Equal([("Detergent", 6m), ("Shirt", 6m)], r.Shares.Single(x => x.PersonId == j).Lines.Select(l => (l.Name, l.Amount)));
 
         var balances = await (await alex.GetAsync("/api/expenses/balances")).Read<BalancesDto>();
         Assert.True(balances.CanMarkReceived);

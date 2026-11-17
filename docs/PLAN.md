@@ -105,7 +105,12 @@ Modules may read each other through service functions (e.g. meal planning reads 
 - ✅ Docker deployment: restart policy, runs as host user, persistent sign-in keys (built 2026-11-14)
 - ✅ Nightly SQLite backup (`VACUUM INTO`) to a mounted folder with retention; Settings → Backups (built 2026-11-14)
 - ✅ Daily digest via ntfy: modules contribute sections through `IDigestSource`; background jobs act for a household
-  through `HouseholdScope` (built 2026-11-14). Later: web push as a second channel, per-user subscriptions
+  through `HouseholdScope` (built 2026-11-14).
+- ✅ Native notifications (Web Push, built 2026-11-17): each member turns them on per device (iPhone: from the Home Screen
+  app); own VAPID key, messages encrypted on the server, no third party. The digest goes to every member's devices, ntfy
+  is optional. Event notifications (`ExpenseNotifier`): "you owe" when a
+  share is new or bigger (not to whoever made the change), a bill going overdue (once, to its payer or everyone), and an
+  admin's "Remind" (once an hour per debt). Later: per-member choice of which notifications they get
 - Waste stats: money/items thrown out per month
 
 ### Future module ideas

@@ -1,18 +1,14 @@
 import { Link } from "react-router";
-import { AlertTriangle, CalendarClock, Wallet } from "lucide-react";
+import { AlertTriangle, CalendarClock, HandCoins, Wallet } from "lucide-react";
 import { shortDate, todayISO } from "@/core/dates";
 import { Card, cx } from "@/core/ui";
-import { useBalances, useSummary, useUpcoming } from "./api";
+import { useBalances, useSummary, useUpcoming, type Balance } from "./api";
 import { DueList } from "./DueList";
 import { monthLabel, money } from "./format";
 
 export function ExpensesDashboardWidget() {
   const summary = useSummary();
   const s = summary.data;
-  const balances = useBalances().data;
-  const me = balances?.myPersonId;
-  const iOwe = (balances?.balances ?? []).filter((b) => b.personId === me).reduce((t, b) => t + b.outstanding, 0);
-  const owedToMe = (balances?.balances ?? []).filter((b) => b.owedToPersonId === me).reduce((t, b) => t + b.outstanding, 0);
   return (
     <>
       {s && (
@@ -25,19 +21,60 @@ export function ExpensesDashboardWidget() {
               {s.byCategory.slice(0, 3).map((b) => `${b.label} ${money(b.total)}`).join(" · ")}
             </p>
           )}
-          {(iOwe > 0 || owedToMe > 0) && (
-            <Link to="/expenses/owed" className="mt-2 flex gap-4 border-t border-border pt-2 text-sm">
-              {iOwe > 0 && <span>You owe <b className="tabular-nums">{money(iOwe)}</b></span>}
-              {owedToMe > 0 && <span>Owed to you <b className="tabular-nums">{money(owedToMe)}</b></span>}
-            </Link>
-          )}
         </Card>
       )}
+      <Owed />
       <BillsDue />
       <DueList limit={4} />
     </>
   );
 }
+
+/** Every expense someone still owes for, and their portion, grouped by who owes whom. Hidden when nobody owes anything. */
+function Owed() {
+  const data = useBalances().data;
+  const me = data?.myPersonId ?? null;
+  // Yours first: what you owe, then what's owed to you, then everyone else's.
+  const rank = (b: Balance) => (b.personId === me ? 0 : b.owedToPersonId === me ? 1 : 2);
+  const list = (data?.balances ?? []).filter((b) => b.outstanding > 0).sort((a, b) => rank(a) - rank(b));
+  if (!list.length) return null;
+  return (
+    <Card title={<span className="flex items-center gap-2"><HandCoins className="size-4 text-accent" />Owed</span>}
+      action={<Link to="/expenses/owed" className="text-xs text-accent">All →</Link>}>
+      <div className="flex flex-col gap-3">
+        {list.map((b) => {
+          const items = b.items.filter((i) => !i.receivedAt);
+          return (
+            <div key={`${b.personId}-${b.owedToPersonId}`}>
+              <p className="flex items-baseline gap-2 text-sm font-semibold">
+                <span className="min-w-0 flex-1 truncate">
+                  {b.personId === me ? "You owe" : `${b.person} owes`} {b.owedToPersonId === me ? "you" : b.owedTo}
+                </span>
+                <span className="tabular-nums">{money(b.outstanding)}</span>
+              </p>
+              <ul className="mt-0.5 flex flex-col text-sm">
+                {items.slice(0, MAX_OWED).map((i) => (
+                  <li key={i.shareId}>
+                    <Link to={`/expenses/receipts/${i.receiptId}`} className="flex items-center gap-2 py-1">
+                      <span className="min-w-0 flex-1 truncate">{i.what}</span>
+                      <span className="shrink-0 text-xs text-muted">{shortDate(i.date)}</span>
+                      <span className="w-16 shrink-0 text-right tabular-nums">{money(i.amount)}</span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+              {items.length > MAX_OWED && (
+                <Link to="/expenses/owed" className="text-xs text-muted">+{items.length - MAX_OWED} more</Link>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </Card>
+  );
+}
+
+const MAX_OWED = 5;
 
 /** Bills due within a week (or overdue) and expected bills not uploaded yet. Hidden when there are none. */
 function BillsDue() {

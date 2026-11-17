@@ -13,7 +13,8 @@ public record NotificationSettingsDto(bool Enabled, string ServerUrl, string Top
 public record NotificationSettingsRequest(
     bool Enabled,
     [Required, Url, StringLength(200)] string ServerUrl,
-    [Required, RegularExpression("^[A-Za-z0-9_-]{1,64}$", ErrorMessage = "Letters, numbers, - and _ only (up to 64).")] string Topic,
+    // Empty: no ntfy, just notifications on members' devices.
+    [RegularExpression("^[A-Za-z0-9_-]{0,64}$", ErrorMessage = "Letters, numbers, - and _ only (up to 64).")] string? Topic,
     [StringLength(200)] string? AccessToken,
     [Range(0, 23)] int DigestHour) : IValidatable
 {
@@ -42,7 +43,7 @@ public static class NotificationEndpoints
             if (s is null) db.Add(s = new NotificationSettings { HouseholdId = me.HouseholdId });
             s.Enabled = req.Enabled;
             s.ServerUrl = req.ServerUrl.Trim().TrimEnd('/');
-            s.Topic = req.Topic.Trim();
+            s.Topic = req.Topic?.Trim() ?? "";
             if (req.AccessToken is not null) s.AccessToken = req.AccessToken.Trim() is "" ? null : req.AccessToken.Trim();
             s.DigestHour = req.DigestHour;
             s.AppUrl = $"{http.Scheme}://{http.Host}";
@@ -52,6 +53,21 @@ public static class NotificationEndpoints
 
         g.MapGet("/preview", (DigestService digest, CancellationToken ct) => digest.BuildAsync(ct));
         g.MapPost("/test", (DigestService digest, CancellationToken ct) => digest.SendTestAsync(ct));
+
+        // Notifications on this device (Web Push).
+        g.MapGet("/push", (PushService push, CancellationToken ct) => push.StatusAsync(ct));
+        g.MapPost("/push/subscriptions", (PushSubscribeRequest req, PushService push, CancellationToken ct) => push.SubscribeAsync(req, ct))
+            .Validate<PushSubscribeRequest>();
+        g.MapPost("/push/unsubscribe", async (PushUnsubscribeRequest req, PushService push, CancellationToken ct) =>
+        {
+            await push.UnsubscribeAsync(req.Endpoint, null, ct);
+            return Results.NoContent();
+        }).Validate<PushUnsubscribeRequest>();
+        g.MapDelete("/push/subscriptions/{id:int}", async (int id, PushService push, CancellationToken ct) =>
+        {
+            await push.UnsubscribeAsync(null, id, ct);
+            return Results.NoContent();
+        });
     }
 
     private static NotificationSettingsDto ToDto(NotificationSettings s, bool saved) =>

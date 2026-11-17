@@ -8,7 +8,7 @@ using Microsoft.Extensions.Logging;
 
 namespace HomeStack.Core.Notifications;
 
-public class DigestService(HomeStackDbContext db, ICurrentUser me, IEnumerable<IDigestSource> sources, NtfyClient ntfy, TimeProvider time)
+public class DigestService(HomeStackDbContext db, ICurrentUser me, IEnumerable<IDigestSource> sources, NtfyClient ntfy, PushService push, TimeProvider time)
 {
     private const int MaxLinesPerSection = 8;
 
@@ -37,30 +37,55 @@ public class DigestService(HomeStackDbContext db, ICurrentUser me, IEnumerable<I
         return new DigestMessage(title, body.ToString(), sections.Any(s => s.Urgent), false);
     }
 
-    /// <summary>Sends the digest now, even if empty. Throws <see cref="BadRequestException"/> if it can't be delivered.</summary>
+    /// <summary>
+    /// Sends the digest now, even if empty: to ntfy (if set up) and to the caller's own devices.
+    /// Throws <see cref="BadRequestException"/> if it can't be delivered.
+    /// </summary>
     public async Task<DigestMessage> SendTestAsync(CancellationToken ct = default)
     {
         var settings = await GetSettingsAsync(ct);
-        if (settings is null || string.IsNullOrWhiteSpace(settings.Topic)) throw new BadRequestException("Save a topic first.");
+        var ntfyOn = !string.IsNullOrWhiteSpace(settings?.Topic);
+        var mine = (await push.StatusAsync(ct)).Devices.Count;
+        if (!ntfyOn && mine == 0) throw new BadRequestException("Turn on notifications for this device, or set up ntfy, first.");
         var message = await BuildAsync(ct);
-        await DeliverAsync(settings, message, ct);
-        await db.SaveChangesAsync(ct);
-        if (settings.LastError is { } error) throw new BadRequestException(error);
+        string? error = null;
+        if (ntfyOn)
+        {
+            await DeliverAsync(settings!, message, ct);
+            await db.SaveChangesAsync(ct);
+            error = settings!.LastError;
+        }
+        if (mine > 0 && await push.SendToUsersAsync([me.UserId], ToPush(message), ct) is { Sent: 0, Error: { } pushError })
+            error ??= pushError;
+        if (error is not null) throw new BadRequestException(error);
         return message;
     }
 
-    /// <summary>The scheduled daily send. Skips empty digests; records success or the error.</summary>
+    /// <summary>
+    /// The scheduled daily send, to ntfy and to every member's devices; each goes once a day. Skips empty digests.
+    /// An ntfy failure retries on the next tick; devices aren't retried (each one's error is kept on it).
+    /// </summary>
     public async Task SendDailyAsync(CancellationToken ct = default)
     {
         var settings = await GetSettingsAsync(ct);
-        if (settings is null || !settings.Enabled || string.IsNullOrWhiteSpace(settings.Topic)) return;
+        if (settings is null || !settings.Enabled) return;
+        var today = time.Today();
         var message = await BuildAsync(ct);
-        if (!message.IsEmpty) await DeliverAsync(settings, message, ct);
-        else settings.LastError = null;
-        // Only count the day as done once it got through (or there was nothing to say); failures retry on the next tick.
-        if (settings.LastError is null) settings.LastSentOn = time.Today();
+        if (settings.LastSentOn != today)
+        {
+            if (!message.IsEmpty && !string.IsNullOrWhiteSpace(settings.Topic)) await DeliverAsync(settings, message, ct);
+            else settings.LastError = null;
+            if (settings.LastError is null) settings.LastSentOn = today;
+        }
+        if (settings.PushSentOn != today)
+        {
+            if (!message.IsEmpty) await push.SendToHouseholdAsync(ToPush(message), ct);
+            settings.PushSentOn = today;
+        }
         await db.SaveChangesAsync(ct);
     }
+
+    private static PushMessage ToPush(DigestMessage m) => new(m.Title, m.Body, "/", "digest", m.Urgent);
 
     private async Task DeliverAsync(NotificationSettings settings, DigestMessage message, CancellationToken ct)
     {
@@ -118,7 +143,7 @@ internal sealed class DigestWorker(IServiceScopeFactory scopes, IConfiguration c
         var now = time.GetLocalNow();
         var today = DateOnly.FromDateTime(now.DateTime);
         var due = await db.Set<NotificationSettings>().AsNoTracking()
-            .Where(s => s.Enabled && (s.LastSentOn == null || s.LastSentOn < today))
+            .Where(s => s.Enabled && (s.LastSentOn == null || s.LastSentOn < today || s.PushSentOn == null || s.PushSentOn < today))
             .Select(s => new { s.HouseholdId, s.DigestHour }).ToListAsync(ct);
 
         foreach (var s in due.Where(s => now.Hour >= s.DigestHour && now.Hour < s.DigestHour + 4))

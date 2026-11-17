@@ -32,6 +32,8 @@ public static class HomeStackExtensions
         services.AddScoped<ICurrentUser, HttpCurrentUser>();
         services.AddScoped<DigestService>();
         services.AddHttpClient<NtfyClient>(c => c.Timeout = TimeSpan.FromSeconds(10));
+        services.AddScoped<PushService>();
+        services.AddHttpClient<WebPushClient>(c => c.Timeout = TimeSpan.FromSeconds(10));
 
         // Images: small local copies of uploads and web pictures.
         services.AddScoped<Images.ImageService>();

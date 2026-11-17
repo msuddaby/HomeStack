@@ -41,6 +41,8 @@ public class Share
     public decimal Amount { get; set; }
     public DateTime? ReceivedAt { get; set; }
     public int? ReceivedByUserId { get; set; }
+    /// <summary>When an admin last sent them a reminder about it.</summary>
+    public DateTime? RemindedAt { get; set; }
 }
 
 public enum Frequency { Weekly, Biweekly, Monthly, Yearly }
@@ -146,6 +148,8 @@ public class Receipt
     public DateOnly? DueDate { get; set; }
     /// <summary>When the bill itself was paid to the company (separate from members paying their shares).</summary>
     public DateOnly? BillPaidOn { get; set; }
+    /// <summary>When members were told this bill is overdue (once per bill).</summary>
+    public DateOnly? OverdueNotifiedOn { get; set; }
     /// <summary>The recurring payment or expected bill this is an occurrence of.</summary>
     public int? RecurringId { get; set; }
     /// <summary>The bill's original PDF (a core StoredFile); photos are in <see cref="ImageIds"/>.</summary>
