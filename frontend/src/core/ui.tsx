@@ -29,9 +29,10 @@ export function Button({ variant = "secondary", busy, className, children, disab
 }
 
 /**
- * A button that opens the phone's camera / photo library. Built as a label around a visually hidden file input
- * (not a hidden input clicked from code), which is the pattern iOS Safari and home-screen apps handle reliably.
- * The input is only cleared after `onFile` finishes, because iOS can discard a picked photo's data once it is.
+ * A button that opens the phone's camera / photo library. The real file input is stretched invisibly over the
+ * whole button, so the tap lands on the input itself: no label forwarding and no click from code, which iPhones
+ * (especially home-screen apps) don't reliably pass on. The input is only cleared after `onFile` finishes,
+ * because iOS can discard a picked photo's data once it is.
  */
 export function PhotoButton({ onFile, busy, variant = "secondary", className, children, trace }: {
   onFile: (file: File) => Promise<void>; busy?: boolean; variant?: Variant; className?: string; children: ReactNode;
@@ -58,24 +59,28 @@ export function PhotoButton({ onFile, busy, variant = "secondary", className, ch
       try { await latest.current.onFile(file); } finally { input.value = ""; handling = false; }
     };
     const onCancel = () => latest.current.trace?.('Event "cancel": picker closed without a photo');
+    const onTouch = (e: Event) => latest.current.trace?.(`Photo input got "${e.type}"`);
     input.addEventListener("change", handle);
     input.addEventListener("input", handle);
     input.addEventListener("cancel", onCancel);
+    input.addEventListener("pointerdown", onTouch);
+    input.addEventListener("click", onTouch);
     return () => {
       input.removeEventListener("change", handle);
       input.removeEventListener("input", handle);
       input.removeEventListener("cancel", onCancel);
+      input.removeEventListener("pointerdown", onTouch);
+      input.removeEventListener("click", onTouch);
     };
   }, []);
 
   return (
-    <label className={cx(buttonBase, variants[variant], busy ? "pointer-events-none opacity-50" : "cursor-pointer", className)}
-      onClick={() => trace?.("Tapped photo button")}>
-      <input ref={inputRef} type="file" accept="image/*" className="sr-only" disabled={busy}
-        onClick={() => trace?.("File input clicked (picker should open)")} />
+    <span className={cx("relative", buttonBase, variants[variant], busy && "pointer-events-none opacity-50", className)}>
       {busy && <Loader2 className="size-4 animate-spin" />}
       {children}
-    </label>
+      <input ref={inputRef} type="file" accept="image/*" disabled={busy} aria-label="Choose a photo"
+        className="absolute inset-0 size-full cursor-pointer opacity-0" />
+    </span>
   );
 }
 
