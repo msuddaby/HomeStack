@@ -11,11 +11,12 @@ namespace HomeStack.Tests;
 public class AiTests
 {
     /// <summary>An OpenAI-format chat completion whose message content is <paramref name="content"/>.</summary>
-    private static string OpenAiReply(object content) => new JsonObject
+    private static string OpenAiReply(object content, string finish = "stop") => new JsonObject
     {
         ["choices"] = new JsonArray(new JsonObject
         {
             ["message"] = new JsonObject { ["role"] = "assistant", ["content"] = content as string ?? JsonSerializer.Serialize(content) },
+            ["finish_reason"] = finish,
         }),
     }.ToJsonString();
 
@@ -68,6 +69,8 @@ public class AiTests
         var json = JsonNode.Parse(body)!;
         Assert.Equal("deepseek-flash", json["model"]!.GetValue<string>());
         Assert.Equal("json_object", json["response_format"]!["type"]!.GetValue<string>());
+        // Thinking models count reasoning toward max_tokens, so none is sent; the service's own maximum applies.
+        Assert.Null(json["max_tokens"]);
         Assert.StartsWith("data:image/png;base64,", json["messages"]![1]!["content"]![0]!["image_url"]!["url"]!.GetValue<string>());
     }
 
@@ -115,6 +118,35 @@ public class AiTests
         Assert.Equal("claude-opus-5-5", json["model"]!.GetValue<string>());
         Assert.True(json["max_tokens"]!.GetValue<int>() >= 16000);
         Assert.Contains("a dozen eggs", json["messages"]![0]!["content"]![0]!["text"]!.GetValue<string>());
+    }
+
+    [Theory]
+    [InlineData("openAiCompatible")]
+    [InlineData("anthropic")]
+    public async Task A_cut_off_reply_says_so_instead_of_bad_json(string provider)
+    {
+        using var app = new TestApp();
+        var c = await app.SetupClientAsync();
+        (await SaveAi(c, new { provider, baseUrl = "https://ai.example.com", apiKey = "k", model = "m" })).EnsureSuccessStatusCode();
+        const string partial = """{"items": [{"name": "Eggs", "category": "eg""";
+        app.Ai.Bodies.Enqueue(provider == "anthropic" ? AnthropicReply(partial, stop: "max_tokens") : OpenAiReply(partial, finish: "length"));
+
+        var res = await c.Post("/api/inventory/read/text", new { text = "a dozen eggs" });
+        Assert.Equal(HttpStatusCode.BadGateway, res.StatusCode);
+        Assert.Contains("cut off", await res.Content.ReadAsStringAsync());
+        Assert.Single(app.Ai.Requests); // the same request would be cut off again, so no retry
+    }
+
+    [Fact]
+    public async Task Numbers_written_as_text_are_accepted()
+    {
+        using var app = new TestApp();
+        var c = await app.SetupClientAsync();
+        (await SaveAi(c, DeepSeek())).EnsureSuccessStatusCode();
+        app.Ai.Bodies.Enqueue(OpenAiReply("""{"items": [{"name": "Eggs", "category": "eggs", "location": "fridge", "quantity": "12"}]}"""));
+
+        var result = await (await c.Post("/api/inventory/read/text", new { text = "a dozen eggs" })).Read<ReadResultDto>();
+        Assert.Equal(12, Assert.Single(result.Items).Quantity);
     }
 
     [Fact]

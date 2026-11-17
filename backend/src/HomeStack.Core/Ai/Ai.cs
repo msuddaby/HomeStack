@@ -1,5 +1,7 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace HomeStack.Core.Ai;
 
@@ -37,6 +39,7 @@ public record AiImage(byte[] Data, string MediaType);
 
 /// <param name="System">Instructions.</param>
 /// <param name="User">The request; should describe the JSON shape wanted.</param>
+/// <param name="MaxTokens">Reply length limit, for Anthropic (which requires one). OpenAI-compatible services use their own maximum.</param>
 public record AiPrompt(string System, string User, IReadOnlyList<AiImage>? Images = null, int MaxTokens = 4096)
 {
     public bool HasImages => Images is { Count: > 0 };
@@ -53,9 +56,10 @@ public interface IAiProvider
 public class AiException(string message) : HomeStackException(Microsoft.AspNetCore.Http.StatusCodes.Status502BadGateway, message);
 
 /// <summary>What modules use: "ask the household's AI for JSON". Knows nothing about receipts or recipes.</summary>
-public class AiService(HomeStackDbContext db, ICurrentUser me, IEnumerable<IAiProvider> providers)
+public class AiService(HomeStackDbContext db, ICurrentUser me, IEnumerable<IAiProvider> providers, ILogger<AiService> logger)
 {
-    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
+    // Models sometimes write numbers as strings ("servings": "4").
+    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { NumberHandling = JsonNumberHandling.AllowReadingFromString };
 
     public async Task<AiSettings?> GetSettingsAsync(CancellationToken ct = default) =>
         await db.Set<AiSettings>().SingleOrDefaultAsync(s => s.HouseholdId == me.HouseholdId, ct);
@@ -77,9 +81,20 @@ public class AiService(HomeStackDbContext db, ICurrentUser me, IEnumerable<IAiPr
             lastReply = await provider.CompleteAsync(settings, model, prompt, json: true, ct);
             if (ExtractJson(lastReply) is { } text)
             {
-                try { if (JsonSerializer.Deserialize<T>(text, Json) is { } value) return value; }
-                catch (JsonException) { }
+                try
+                {
+                    if (JsonSerializer.Deserialize<T>(text, Json) is { } value) return value;
+                }
+                catch (JsonException ex)
+                {
+                    // Keep the whole reply: the message shown to the user is only its first 160 characters.
+                    logger.LogWarning("AI reply ({Model}, attempt {Attempt}) didn't fit {Type}: {Error}{NewLine}{Reply}",
+                        model, attempt + 1, typeof(T).Name, ex.Message, Environment.NewLine, lastReply);
+                    continue;
+                }
             }
+            logger.LogWarning("AI reply ({Model}, attempt {Attempt}) had no JSON object:{NewLine}{Reply}",
+                model, attempt + 1, Environment.NewLine, lastReply);
         }
         throw new AiException($"The AI's reply wasn't usable JSON: {Shorten(lastReply)}");
     }

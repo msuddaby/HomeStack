@@ -46,6 +46,10 @@ public abstract class AiProviderBase(HttpClient http)
         catch (JsonException) { return AiService.Shorten(body, 240); }
     }
 
+    /// <summary>The service stopped at its length limit, so the reply is incomplete (and its JSON unreadable).</summary>
+    protected static AiException CutOff() =>
+        new("The AI's reply was cut off before it finished. Try asking for less at once, or a model that allows longer replies.");
+
     protected static string Url(AiSettings s, string path) => s.BaseUrl.TrimEnd('/') + path;
 }
 
@@ -76,7 +80,8 @@ public class OpenAiCompatibleProvider(HttpClient http) : AiProviderBase(http), I
             ["messages"] = new JsonArray(
                 new JsonObject { ["role"] = "system", ["content"] = p.System },
                 new JsonObject { ["role"] = "user", ["content"] = userContent }),
-            ["max_tokens"] = p.MaxTokens,
+            // No max_tokens: thinking models (DeepSeek thinks by default) count their reasoning toward it, so a cap
+            // sized for the answer cuts the answer off. Each service's own maximum applies instead.
             ["temperature"] = 0.1,
         };
         if (json) body["response_format"] = new JsonObject { ["type"] = "json_object" };
@@ -85,7 +90,9 @@ public class OpenAiCompatibleProvider(HttpClient http) : AiProviderBase(http), I
         {
             if (!string.IsNullOrEmpty(s.ApiKey)) h.Authorization = new AuthenticationHeaderValue("Bearer", s.ApiKey);
         }, ct);
-        return res["choices"]?[0]?["message"]?["content"]?.ToString() ?? "";
+        var choice = res["choices"]?[0];
+        if (choice?["finish_reason"]?.ToString() == "length") throw CutOff();
+        return choice?["message"]?["content"]?.ToString() ?? "";
     }
 }
 
@@ -120,6 +127,7 @@ public class AnthropicProvider(HttpClient http) : AiProviderBase(http), IAiProvi
             h.Add("anthropic-version", "2023-06-01");
         }, ct);
         if (res["stop_reason"]?.ToString() == "refusal") throw new AiException("Claude declined this request.");
+        if (res["stop_reason"]?.ToString() == "max_tokens") throw CutOff();
         return string.Concat((res["content"] as JsonArray ?? [])
             .Where(b => b?["type"]?.ToString() == "text").Select(b => b!["text"]?.ToString()));
     }
