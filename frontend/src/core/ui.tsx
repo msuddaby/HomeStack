@@ -35,10 +35,12 @@ export function Button({ variant = "secondary", busy, className, children, disab
  * The input is only cleared after `onFiles` finishes, because iOS can discard a picked photo's data once it is,
  * so callers should read or copy the files before returning.
  */
-export function PhotoButton({ onFiles, busy, multiple, camera, variant = "secondary", bare, className, children }: {
+export function PhotoButton({ onFiles, busy, multiple, camera, accept = "image/*", variant = "secondary", bare, className, children }: {
   onFiles: (files: File[]) => Promise<void>; busy?: boolean; multiple?: boolean;
   /** Open the camera straight away instead of offering the library. */
   camera?: boolean;
+  /** File types offered, e.g. "application/pdf,image/*" for bills. */
+  accept?: string;
   variant?: Variant;
   /** Skip the standard button look, for custom-styled tiles. */
   bare?: boolean;
@@ -72,8 +74,8 @@ export function PhotoButton({ onFiles, busy, multiple, camera, variant = "second
     <span className={cx("relative", !bare && buttonBase, !bare && variants[variant], busy && "pointer-events-none opacity-50", className)}>
       {busy && <Loader2 className="size-4 animate-spin" />}
       {children}
-      <input ref={inputRef} type="file" accept="image/*" multiple={multiple} capture={camera ? "environment" : undefined}
-        disabled={busy} aria-label="Choose a photo" className="absolute inset-0 size-full cursor-pointer opacity-0" />
+      <input ref={inputRef} type="file" accept={accept} multiple={multiple} capture={camera ? "environment" : undefined}
+        disabled={busy} aria-label={accept === "image/*" ? "Choose a photo" : "Choose a file"} className="absolute inset-0 size-full cursor-pointer opacity-0" />
     </span>
   );
 }

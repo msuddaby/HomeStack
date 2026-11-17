@@ -4,11 +4,11 @@ import { Check, KeyRound, LogOut, Trash2, UserPlus } from "lucide-react";
 import { api, ApiError } from "@/core/api";
 import { useLogout, useMe } from "@/core/auth";
 import { PageHeader } from "@/core/layout";
-import { Button, Card, ErrorText, Field, Input, Sheet } from "@/core/ui";
+import { Button, Card, Chip, ErrorText, Field, Input, Sheet } from "@/core/ui";
 import { modules } from "@/modules";
 import { AiCard, BackupsCard, NotificationsCard } from "./SystemSettings";
 
-interface UserDto { id: number; name: string; username: string }
+interface UserDto { id: number; name: string; username: string; isAdmin: boolean }
 
 export function SettingsPage() {
   const me = useMe();
@@ -53,6 +53,13 @@ function HouseholdMembers() {
     mutationFn: (id: number) => api(`/household/users/${id}`, { method: "DELETE" }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["household-users"] }); setRemoving(null); },
   });
+  // Admins can make others admin (they mark split payments as received in Spending).
+  const setAdmin = useMutation({
+    mutationFn: ({ id, isAdmin }: { id: number; isAdmin: boolean }) => api<UserDto>(`/household/users/${id}/admin`, { method: "PUT", body: { isAdmin } }),
+    onSuccess: () => Promise.all([qc.invalidateQueries({ queryKey: ["household-users"] }), qc.invalidateQueries({ queryKey: ["me"] })]),
+  });
+  const iAmAdmin = !!users.data?.find((u) => u.id === me.data?.user.id)?.isAdmin;
+  const admins = users.data?.filter((u) => u.isAdmin).length ?? 0;
 
   return (
     <Card title="Household members" action={!adding && <Button variant="ghost" onClick={() => setAdding(true)}><UserPlus className="size-4" />Add</Button>}>
@@ -60,7 +67,17 @@ function HouseholdMembers() {
         {users.data?.map((u) => (
           <li key={u.id} className="flex items-center gap-3 py-2">
             <span className="flex size-9 items-center justify-center rounded-full bg-accent-soft font-semibold text-accent">{u.name[0]?.toUpperCase()}</span>
-            <div className="min-w-0 flex-1"><p className="text-sm font-medium">{u.name}</p><p className="text-xs text-muted">@{u.username}</p></div>
+            <div className="min-w-0 flex-1">
+              <p className="flex items-center gap-2 text-sm font-medium">{u.name}{u.isAdmin && <Chip tone="accent">Admin</Chip>}</p>
+              <p className="text-xs text-muted">@{u.username}</p>
+            </div>
+            {/* The household always keeps one admin. */}
+            {iAmAdmin && !(u.isAdmin && admins === 1) && (
+              <Button variant="ghost" className="min-h-9 px-2 text-xs" busy={setAdmin.isPending && setAdmin.variables?.id === u.id}
+                onClick={() => setAdmin.mutate({ id: u.id, isAdmin: !u.isAdmin })}>
+                {u.isAdmin ? "Remove admin" : "Make admin"}
+              </Button>
+            )}
             {u.id !== me.data?.user.id && (
               <Button variant="ghost" className="px-3" aria-label={`Remove ${u.name}`} onClick={() => { remove.reset(); setRemoving(u); }}>
                 <Trash2 className="size-4" />
@@ -69,6 +86,8 @@ function HouseholdMembers() {
           </li>
         ))}
       </ul>
+      {setAdmin.error && <div className="mt-2"><ErrorText error={setAdmin.error} /></div>}
+      <p className="mt-2 text-xs text-muted">Admins can make other members admin and mark split payments as received.</p>
       <Sheet open={!!removing} onClose={() => setRemoving(null)} title={`Remove ${removing?.name ?? ""}?`}>
         <p className="text-sm">
           They'll be signed out on every device and won't be able to sign in again. Everything they added stays.

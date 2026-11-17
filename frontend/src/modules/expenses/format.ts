@@ -1,6 +1,7 @@
 import type { Rhythm } from "./api";
 
-export const money = (n: number) => `${n < 0 ? "−" : ""}$${Math.abs(n).toFixed(2)}`;
+export const money = (n: number) =>
+  `${n < 0 ? "−" : ""}$${Math.abs(n).toLocaleString("en-CA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 /** "2026-11" → "November 2026". */
 export function monthLabel(month: string, short = false) {

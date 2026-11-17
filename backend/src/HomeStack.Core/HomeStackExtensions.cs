@@ -35,6 +35,7 @@ public static class HomeStackExtensions
 
         // Images: small local copies of uploads and web pictures.
         services.AddScoped<Images.ImageService>();
+        services.AddScoped<Images.FileService>();
         services.AddScoped<Images.ImageCache>();
         services.AddSingleton<Images.ImageFetchFailures>();
         services.AddHttpClient<Images.ImageFetcher>(c =>
@@ -95,6 +96,7 @@ public static class HomeStackExtensions
         app.MapNotificationEndpoints();
         app.MapAiEndpoints();
         app.MapImageEndpoints();
+        app.MapFileEndpoints();
 
         var modules = app.ServiceProvider.GetServices<IModule>().ToList();
         app.MapGet("/api/modules", () => modules.Select(m => new { m.Id, m.Name })).WithTags("Core");

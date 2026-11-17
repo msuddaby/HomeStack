@@ -12,6 +12,7 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.15" />
+    <PackageReference Include="PDFtoImage" Version="5.4.0" />
     <PackageReference Include="SkiaSharp" Version="4.156.1" />
     <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="4.156.1" />
   </ItemGroup>

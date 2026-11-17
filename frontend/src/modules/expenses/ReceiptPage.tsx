@@ -1,12 +1,16 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
-import { ArrowLeft, ImagePlus, Pencil, Trash2 } from "lucide-react";
+import { ArrowLeft, FileText, ImagePlus, Pencil, Trash2, Users } from "lucide-react";
 import { shrinkImage } from "@/core/ai";
 import { errorMessage } from "@/core/api";
 import { shortDate, todayISO } from "@/core/dates";
-import { Button, Card, ErrorText, Field, Input, PhotoButton, Sheet, Spinner } from "@/core/ui";
-import { useAddReceiptPhotos, useDeleteReceipt, useExpenseCategories, useReceipt, useUpdateReceipt, type Receipt } from "./api";
+import { Button, Card, Chip, ErrorText, Field, Input, PhotoButton, Sheet, Spinner } from "@/core/ui";
+import {
+  useAddReceiptPhotos, useBalances, useBillPaid, useDeleteReceipt, useExpenseCategories, useMarkReceived, usePeople, useReceipt, useSetSplit,
+  useUpdateReceipt, type Receipt,
+} from "./api";
 import { money } from "./format";
+import { fromParts, noSplit, PeopleChips, SplitEditor, toParts, type SplitValue } from "./Split";
 
 export function ReceiptPage() {
   const id = Number(useParams().id);
@@ -17,6 +21,7 @@ export function ReceiptPage() {
   const addPhotos = useAddReceiptPhotos();
   const navigate = useNavigate();
   const [editing, setEditing] = useState(false);
+  const [splitting, setSplitting] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [photoError, setPhotoError] = useState<string | null>(null);
   const [preparing, setPreparing] = useState(false);
@@ -40,13 +45,14 @@ export function ReceiptPage() {
       <Link to="/expenses/receipts" className="inline-flex items-center gap-1 text-sm text-muted"><ArrowLeft className="size-4" />Receipts</Link>
       <div className="flex items-start gap-3">
         <div className="min-w-0 flex-1">
-          <h1 className="truncate text-2xl font-bold">{r.store ?? (r.source === "manual" ? "Expense" : "Receipt")}</h1>
+          <h1 className="truncate text-2xl font-bold">{r.store ?? (r.lines.length === 1 ? r.lines[0]!.name : r.source === "bill" ? "Bill" : "Receipt")}</h1>
           <p className="text-sm text-muted">{shortDate(r.purchasedAt)}{r.note ? ` · ${r.note}` : ""}</p>
         </div>
         <p className="text-2xl font-bold tabular-nums">{money(r.total)}</p>
       </div>
       <div className="flex flex-wrap gap-2">
         <Button onClick={() => setEditing(true)}><Pencil className="size-4" />Edit</Button>
+        <Button onClick={() => setSplitting(true)}><Users className="size-4" />Split</Button>
         {r.images.length < 4 && (
           <PhotoButton multiple onFiles={pickPhotos} busy={preparing || addPhotos.isPending}>
             {!(preparing || addPhotos.isPending) && <ImagePlus className="size-4" />}
@@ -56,6 +62,8 @@ export function ReceiptPage() {
         <Button variant="ghost" onClick={() => setConfirming(true)}><Trash2 className="size-4" />Delete</Button>
       </div>
       {photoError && <p className="text-sm text-danger">{photoError}</p>}
+      {(r.source === "bill" || r.dueDate) && <BillCard r={r} />}
+      {r.paidByPersonId != null && <SharesCard r={r} />}
 
       <Card>
         <ul className="divide-y divide-border">
@@ -102,6 +110,7 @@ export function ReceiptPage() {
       )}
 
       <EditSheet receipt={r} open={editing} onClose={() => setEditing(false)} />
+      <SplitSheet receipt={r} open={splitting} onClose={() => setSplitting(false)} />
       <Sheet open={confirming} onClose={() => setConfirming(false)} title="Delete this receipt?">
         <p className="text-sm">
           It comes off your spending, with its photos. Anything it put into inventory stays there.
@@ -114,6 +123,99 @@ export function ReceiptPage() {
         </div>
       </Sheet>
     </div>
+  );
+}
+
+/** Due date, whether it's been paid to the company, and the original PDF. */
+function BillCard({ r }: { r: Receipt }) {
+  const paid = useBillPaid();
+  const overdue = !r.billPaidOn && r.dueDate != null && r.dueDate < todayISO();
+  return (
+    <Card>
+      <div className="flex flex-wrap items-center gap-2 text-sm">
+        <span className="min-w-0 flex-1">
+          {r.billPaidOn ? <>Paid on {shortDate(r.billPaidOn)}</> : r.dueDate ? <>Due {shortDate(r.dueDate)}</> : "Not paid yet"}
+          {" "}{r.billPaidOn ? <Chip tone="accent">Paid</Chip> : overdue ? <Chip tone="danger">Overdue</Chip> : <Chip tone="warn">Unpaid</Chip>}
+        </span>
+        <Button variant="ghost" className="min-h-9 px-2 text-xs" busy={paid.isPending}
+          onClick={() => paid.mutate({ id: r.id, paidOn: r.billPaidOn ? null : todayISO() })}>
+          {r.billPaidOn ? "Mark unpaid" : "Mark paid"}
+        </Button>
+        {r.document && <a href={r.document} target="_blank" rel="noreferrer"><Button variant="ghost" className="min-h-9 px-2 text-xs"><FileText className="size-4" />Open PDF</Button></a>}
+      </div>
+    </Card>
+  );
+}
+
+/** Who paid and what everyone else owes them; admins tick shares off as received. */
+function SharesCard({ r }: { r: Receipt }) {
+  const canMark = useBalances().data?.canMarkReceived ?? false;
+  const mark = useMarkReceived();
+  return (
+    <Card title={`Paid by ${r.paidBy ?? "?"}`}>
+      {r.shares.length ? (
+        <ul className="flex flex-col gap-1.5 text-sm">
+          {r.shares.map((s) => (
+            <li key={s.id} className="flex items-center gap-2">
+              {canMark && (
+                <input type="checkbox" checked={!!s.receivedAt} disabled={mark.isPending} aria-label={`Received from ${s.person}`}
+                  onChange={(e) => mark.mutate({ shareId: s.id, received: e.target.checked })} className="size-5 accent-[var(--color-accent)]" />
+              )}
+              <span className="min-w-0 flex-1">{s.person} owes</span>
+              {s.receivedAt && <Chip tone="accent">Received</Chip>}
+              <span className="tabular-nums">{money(s.amount)}</span>
+            </li>
+          ))}
+        </ul>
+      ) : <p className="text-sm text-muted">Nobody else owes anything for this.</p>}
+      {mark.error && <ErrorText error={mark.error} />}
+    </Card>
+  );
+}
+
+/** Change who paid and the split; for a receipt with several lines, each line can have its own people. */
+function SplitSheet({ receipt, open, onClose }: { receipt: Receipt; open: boolean; onClose: () => void }) {
+  const people = usePeople().data ?? [];
+  const myId = people.find((p) => p.isMe)?.id ?? null;
+  const setSplit = useSetSplit();
+  const [value, setValue] = useState<SplitValue>(noSplit(myId));
+  const [lines, setLines] = useState<Record<number, number[] | null>>({});
+  useEffect(() => {
+    if (!open) return;
+    setSplit.reset();
+    setValue(receipt.paidByPersonId != null ? fromParts(receipt.paidByPersonId, receipt.split) : noSplit(myId));
+    setLines(Object.fromEntries(receipt.lines.map((l) => [l.id, l.split.length ? l.split.map((p) => p.personId) : null])));
+  }, [open, receipt.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  const many = receipt.lines.length > 1;
+
+  return (
+    <Sheet open={open} onClose={onClose} title="Split">
+      <div className="flex flex-col gap-3">
+        <SplitEditor people={people} value={many ? { ...value, custom: null } : value} onChange={(v) => setValue(many ? { ...v, custom: null } : v)}
+          total={many ? null : receipt.total} />
+        {many && (
+          <div className="flex flex-col gap-2">
+            <p className="text-xs text-muted">Lines that aren't the same split (snacks for two, something for one person):</p>
+            {receipt.lines.map((l) => (
+              <div key={l.id} className="rounded-xl border border-border p-2">
+                <p className="flex justify-between text-sm"><span className="truncate">{l.name}</span><span className="tabular-nums">{money(l.amount)}</span></p>
+                <div className="mt-1"><PeopleChips small people={people} selected={lines[l.id] ?? value.people}
+                  onChange={(ids) => setLines({ ...lines, [l.id]: ids.length ? ids : null })} /></div>
+              </div>
+            ))}
+          </div>
+        )}
+        {setSplit.error && <ErrorText error={setSplit.error} />}
+        <Button variant="primary" busy={setSplit.isPending} onClick={async () => {
+          await setSplit.mutateAsync({
+            id: receipt.id, paidByPersonId: value.paidBy, split: toParts(value),
+            lines: many ? receipt.lines.map((l) => ({ lineId: l.id, split: lines[l.id]?.length ? lines[l.id]!.map((personId) => ({ personId, weight: 1 })) : null })) : undefined,
+          });
+          onClose();
+        }}>Save split</Button>
+        <p className="text-xs text-muted">Tax and anything not itemised are shared in proportion. Payments already marked received stay received.</p>
+      </div>
+    </Sheet>
   );
 }
 

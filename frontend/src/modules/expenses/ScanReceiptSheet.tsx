@@ -8,8 +8,9 @@ import { useToast } from "@/core/toast";
 import { Button, Chip, cx, ErrorText, Field, Input, PhotoButton, Select, Sheet, Spinner } from "@/core/ui";
 import { useCategories, useLocations, type AddItem, type Category, type Location, type Product } from "@/modules/inventory/api";
 import { suggestExpiry } from "@/modules/inventory/logic";
-import { readReceipt, useAddReceiptPhotos, useExpenseCategories, useSaveReceipt, type DraftLine, type ItemRef, type PackSource, type ReceiptDraft } from "./api";
+import { readReceipt, useAddReceiptPhotos, useExpenseCategories, usePeople, useSaveReceipt, type DraftLine, type ItemRef, type PackSource, type Person, type ReceiptDraft } from "./api";
 import { money } from "./format";
+import { noSplit, PeopleChips, SplitEditor, toParts, type SplitValue } from "./Split";
 
 interface FoodRow {
   add: boolean; name: string; category: string; locationId: number; expiresAt: string; expiryTouched: boolean; product: Product | null;
@@ -25,6 +26,8 @@ interface Row {
   /** null = not answered yet (not linked). */
   suggestionAccepted: boolean | null;
   food: FoodRow | null;
+  /** Who this line is split between, when not the receipt's split (snacks for two, a shirt for one). Null: the receipt's. */
+  split: number[] | null;
 }
 
 const num = (s: string) => { const n = Number(s.replace(/[$,\s]/g, "")); return s.trim() !== "" && Number.isFinite(n) ? n : null; };
@@ -55,13 +58,19 @@ export function ScanReceiptSheet({ open, onClose, onBack }: { open: boolean; onC
   const [date, setDate] = useState(todayISO());
   const [total, setTotal] = useState("");
   const [tax, setTax] = useState("");
+  const people = usePeople().data ?? [];
+  const myId = people.find((p) => p.isMe)?.id ?? null;
+  const [split, setSplit] = useState<SplitValue>(noSplit(null));
 
   useEffect(() => {
     if (!open) return;
     setPhotos([]); setDraft(null); setRows([]); setError(null); setStore(""); setDate(todayISO()); setTotal(""); setTax("");
+    setSplit(noSplit(myId));
     save.reset();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
+  // Paid by me, once the people list has loaded.
+  useEffect(() => { if (myId != null) setSplit((s) => (s.paidBy == null ? { ...s, paidBy: myId } : s)); }, [myId]);
   useEffect(() => () => photos.forEach((p) => URL.revokeObjectURL(p.url)), [photos]);
 
   const locFor = (kind: string): Location | undefined => locations.find((l) => l.kind === kind) ?? locations[0];
@@ -101,7 +110,7 @@ export function ScanReceiptSheet({ open, onClose, onBack }: { open: boolean; onC
           return { add: l.food.add, name: l.food.name, expiresAt: expiryFor(base, bought), expiryTouched: false, ...base, ...draftAmount(l) };
         })();
         return { key: l.key, include: true, name: l.name, category: l.category, amount: l.amount.toFixed(2), source: l,
-          quantity: round3(l.quantity), unit: l.unit ?? "", itemId: l.item?.id ?? null, suggestionAccepted: null, food };
+          quantity: round3(l.quantity), unit: l.unit ?? "", itemId: l.item?.id ?? null, suggestionAccepted: null, food, split: null };
       }));
     } catch (e) { setError(e); } finally { setReading(false); }
   }
@@ -150,10 +159,12 @@ export function ScanReceiptSheet({ open, onClose, onBack }: { open: boolean; onC
         itemId: r.suggestionAccepted ? r.source.suggestion!.id : r.itemId, code: s.code, name: r.name.trim(), raw: s.raw,
         category: r.category, quantity, unit, unitPrice: s.unitPrice, amount: num(r.amount)!, discount: s.discount, inventory,
         trackInventory: f ? f.add : null,
+        split: r.split?.length ? r.split.map((personId) => ({ personId, weight: 1 })) : null,
       };
     });
     const saved = await save.mutateAsync({
       store: store.trim() || null, purchasedAt: date, subtotal: draft?.subtotal ?? null, tax: taxNum, total: totalNum, note: null, lines,
+      paidByPersonId: split.paidBy, split: toParts(split),
     });
     let photoNote = "";
     try { if (photos.length) await addPhotos.mutateAsync({ id: saved.id, photos: photos.map((p) => p.blob) }); }
@@ -219,10 +230,12 @@ export function ScanReceiptSheet({ open, onClose, onBack }: { open: boolean; onC
             </p>
           )}
           {!rows.length && <p className="text-sm text-muted">No lines found. Try a clearer photo.</p>}
+          {people.length > 1 && <SplitEditor people={people} value={{ ...split, custom: null }} onChange={(v) => setSplit({ ...v, custom: null })} />}
 
           <ul className="flex flex-col gap-2">
             {rows.map((r) => (
               <LineRow key={r.key} r={r} expenseCats={expenseCats} foodCats={foodCats} locations={locations}
+                people={people} receiptSplit={split.people}
                 update={(p) => update(r.key, p)} updateFood={(p) => updateFood(r.key, p)} updateQuantity={(q) => updateQuantity(r.key, q)} />
             ))}
           </ul>
@@ -269,8 +282,9 @@ export function ScanReceiptSheet({ open, onClose, onBack }: { open: boolean; onC
   );
 }
 
-function LineRow({ r, expenseCats, foodCats, locations, update, updateFood, updateQuantity }: {
+function LineRow({ r, expenseCats, foodCats, locations, people, receiptSplit, update, updateFood, updateQuantity }: {
   r: Row; expenseCats: { id: string; label: string; emoji: string }[]; foodCats: Category[]; locations: Location[];
+  people: Person[]; receiptSplit: number[];
   update: (p: Partial<Row>) => void; updateFood: (p: Partial<FoodRow>) => void; updateQuantity: (q: string) => void;
 }) {
   const s = r.source;
@@ -352,10 +366,33 @@ function LineRow({ r, expenseCats, foodCats, locations, update, updateFood, upda
               )}
             </div>
           )}
+          {people.length > 1 && <LineSplit r={r} people={people} receiptSplit={receiptSplit} onChange={(split) => update({ split })} />}
           {s.raw && s.raw !== r.name && <p className="mt-1 truncate font-mono text-[11px] text-muted">{s.raw}</p>}
         </>
       )}
     </li>
+  );
+}
+
+/** "Split: Alex, Sam" for one line; tap to choose different people for just this line. */
+function LineSplit({ r, people, receiptSplit, onChange }: {
+  r: Row; people: Person[]; receiptSplit: number[]; onChange: (split: number[] | null) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const who = r.split ?? receiptSplit;
+  const names = people.filter((p) => who.includes(p.id)).map((p) => p.name).join(", ");
+  return (
+    <div className="mt-1.5 text-xs">
+      <button type="button" onClick={() => setOpen(!open)} className={cx("text-left", r.split ? "text-accent" : "text-muted")}>
+        Split: {who.length ? names : "not split"}{r.split ? " (this line)" : ""} ›
+      </button>
+      {open && (
+        <div className="mt-1.5 flex flex-col gap-1.5">
+          <PeopleChips small people={people} selected={who} onChange={(ids) => onChange(ids.length ? ids : null)} />
+          {r.split && <button type="button" className="self-start text-muted underline" onClick={() => onChange(null)}>Same as the rest of the receipt</button>}
+        </div>
+      )}
+    </div>
   );
 }
 

@@ -13,6 +13,7 @@ public class HomeStackException(int statusCode, string message) : Exception(mess
 public class NotFoundException(string what = "Not found") : HomeStackException(StatusCodes.Status404NotFound, what);
 public class BadRequestException(string message) : HomeStackException(StatusCodes.Status400BadRequest, message);
 public class ConflictException(string message) : HomeStackException(StatusCodes.Status409Conflict, message);
+public class ForbiddenException(string message) : HomeStackException(StatusCodes.Status403Forbidden, message);
 
 public sealed class HomeStackExceptionHandler(IProblemDetailsService problems, ILogger<HomeStackExceptionHandler> logger) : IExceptionHandler
 {

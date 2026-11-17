@@ -90,7 +90,16 @@ Modules may read each other through service functions (e.g. meal planning reads 
   Items can also be combined by hand ("Same as another item…")
 - Overview by month (category incl. tax, store, six-month bars), receipts, item history with price per store and buying rhythm,
   manual expenses; "Usually buy about now" on Home and in the daily digest, with add-to-list
-- Later: bills and subscriptions (recurring expenses), budgets per category, edit receipt lines after saving, CSV export
+- ✅ Bills, splitting and recurring payments (built 2026-11-17):
+  - Admins: the household's first member is admin; admins make others admin and mark split payments received
+  - Splits: every expense has a "paid by" person and a split (household members plus people not on HomeStack, by name);
+    each receipt line can have its own people; tax and unitemised amounts are shared in proportion; equal or custom amounts.
+    "Owed" tab: who owes whom, admins tick shares received
+  - Bills: upload a PDF (pages rendered to images with PDFtoImage) or photos → AI reads company, amount, dates → review → save
+    with the original file; mark paid to the company; due-date reminders on Home and in the digest
+  - Recurring: fixed payments (rent) recorded automatically on the day with their split; expected bills (amount varies)
+    shown as missing until that period's bill is uploaded
+- Later: budgets per category, edit receipt lines after saving, CSV export, "settle up" summaries
 
 ### Cross-cutting
 - ✅ Docker deployment: restart policy, runs as host user, persistent sign-in keys (built 2026-11-14)
@@ -101,4 +110,4 @@ Modules may read each other through service functions (e.g. meal planning reads 
 
 ### Future module ideas
 Home maintenance (filters, smoke detector batteries, seasonal tasks), chores, warranties and manuals,
-household documents, plant care. (Bills/subscriptions: next step for Spending.)
+household documents, plant care.

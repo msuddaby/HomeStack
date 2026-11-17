@@ -6,7 +6,8 @@ using Microsoft.EntityFrameworkCore;
 
 namespace HomeStack.Modules.Expenses;
 
-public class ExpensesService(HomeStackDbContext db, ICurrentUser me, TimeProvider time, ImageService images, InventoryService inventory)
+public class ExpensesService(HomeStackDbContext db, ICurrentUser me, TimeProvider time, ImageService images, InventoryService inventory,
+    PeopleService people, FileService files)
 {
     public const int MaxPhotos = 4;
     /// <summary>Receipt photos stay readable for returns and warranties.</summary>
@@ -70,12 +71,15 @@ public class ExpensesService(HomeStackDbContext db, ICurrentUser me, TimeProvide
 
     public async Task<ReceiptDto> SaveReceiptAsync(SaveReceiptRequest req)
     {
+        var anySplit = req.Split is { Count: > 0 } || req.Lines.Any(l => l.Split is { Count: > 0 });
+        var payer = await PayerAsync(req.PaidByPersonId, anySplit, req.Split, req.Lines.SelectMany(l => l.Split ?? []));
         await using var tx = await db.Database.BeginTransactionAsync();
         var store = await GetOrCreateStoreAsync(req.Store);
         var receipt = new Receipt
         {
             HouseholdId = Hid, StoreId = store?.Id, PurchasedAt = req.PurchasedAt, Subtotal = req.Subtotal, Tax = req.Tax,
             Total = req.Total, Note = Clean(req.Note), Source = ReceiptSource.Scan, UserId = me.UserId,
+            PaidByPersonId = payer, Split = SplitMath.Parts(req.Split),
         };
         var itemsForInventory = new List<(TrackedItem Item, AddItemRequest Request)>();
         foreach (var (line, sort) in req.Lines.Select((l, i) => (l, i)))
@@ -86,6 +90,7 @@ public class ExpensesService(HomeStackDbContext db, ICurrentUser me, TimeProvide
                 Sort = sort, ItemId = item.Id, Code = Clean(line.Code), Name = line.Name.Trim(), Raw = Clean(line.Raw),
                 Category = line.Category, Quantity = line.Quantity, Unit = Clean(line.Unit), UnitPrice = line.UnitPrice,
                 Amount = line.Amount, Discount = line.Discount is > 0 ? line.Discount : null,
+                Split = SplitMath.Parts(line.Split),
             });
             if (line.Inventory is { } add)
             {
@@ -98,6 +103,7 @@ public class ExpensesService(HomeStackDbContext db, ICurrentUser me, TimeProvide
                 }));
             }
         }
+        SplitMath.ApplyShares(receipt);
         db.Add(receipt);
         await db.SaveChangesAsync();
 
@@ -109,6 +115,35 @@ public class ExpensesService(HomeStackDbContext db, ICurrentUser me, TimeProvide
         await tx.CommitAsync();
 
         return (await GetReceiptAsync(receipt.Id)) with { AddedToInventory = added.Count };
+    }
+
+    /// <summary>
+    /// Who paid, after checking everyone named belongs to the household. With a split but no payer named, it's you.
+    /// Without a split there's nothing owed, so no payer is recorded.
+    /// </summary>
+    internal async Task<int?> PayerAsync(int? paidBy, bool anySplit, params IEnumerable<SplitPartDto>?[] splits)
+    {
+        await people.CheckAsync(splits.SelectMany(s => s ?? []).Select(p => (int?)p.PersonId).Append(paidBy));
+        if (!anySplit) return paidBy;
+        return paidBy ?? await people.MyPersonIdAsync() ?? throw new BadRequestException("Say who paid.");
+    }
+
+    /// <summary>Changes who paid and how a saved expense is split; shares already marked received stay received.</summary>
+    public async Task<ReceiptDto> SetSplitAsync(int id, SetSplitRequest req)
+    {
+        var r = await Receipts.Include(x => x.Lines).ThenInclude(l => l.Split).Include(x => x.Split).Include(x => x.Shares)
+            .SingleOrDefaultAsync(x => x.Id == id) ?? throw new NotFoundException("Receipt not found");
+        foreach (var l in req.Lines ?? [])
+        {
+            var line = r.Lines.SingleOrDefault(x => x.Id == l.LineId) ?? throw new BadRequestException("Unknown line");
+            line.Split = SplitMath.Parts(l.Split);
+        }
+        r.Split = SplitMath.Parts(req.Split);
+        var anySplit = r.Split.Count > 0 || r.Lines.Any(l => l.Split.Count > 0);
+        r.PaidByPersonId = await PayerAsync(req.PaidByPersonId, anySplit, req.Split, (req.Lines ?? []).SelectMany(l => l.Split ?? []));
+        SplitMath.ApplyShares(r);
+        await db.SaveChangesAsync();
+        return await GetReceiptAsync(id);
     }
 
     /// <summary>
@@ -162,14 +197,16 @@ public class ExpensesService(HomeStackDbContext db, ICurrentUser me, TimeProvide
 
     public async Task<ReceiptDto> AddManualAsync(ManualExpenseRequest req)
     {
+        var payer = await PayerAsync(req.PaidByPersonId, req.Split is { Count: > 0 }, req.Split);
         var store = await GetOrCreateStoreAsync(req.Store);
         var receipt = new Receipt
         {
             HouseholdId = Hid, StoreId = store?.Id, PurchasedAt = req.PurchasedAt, Total = req.Amount, Note = Clean(req.Note),
-            Source = ReceiptSource.Manual, UserId = me.UserId,
+            Source = ReceiptSource.Manual, UserId = me.UserId, PaidByPersonId = payer, Split = SplitMath.Parts(req.Split),
             // Not a tracked item: one-off amounts would clutter the item list.
             Lines = [new ReceiptLine { Name = req.Description.Trim(), Category = req.Category, Amount = req.Amount }],
         };
+        SplitMath.ApplyShares(receipt);
         db.Add(receipt);
         await db.SaveChangesAsync();
         return await GetReceiptAsync(receipt.Id);
@@ -181,6 +218,27 @@ public class ExpensesService(HomeStackDbContext db, ICurrentUser me, TimeProvide
         r.StoreId = (await GetOrCreateStoreAsync(req.Store))?.Id;
         r.PurchasedAt = req.PurchasedAt;
         r.Note = Clean(req.Note);
+        await db.SaveChangesAsync();
+        return await GetReceiptAsync(id);
+    }
+
+    /// <summary>Attaches a bill's original file: a PDF is kept as-is, a photo is stored like receipt photos.</summary>
+    public async Task<ReceiptDto> AttachDocumentAsync(int id, byte[] data, string fileName, CancellationToken ct)
+    {
+        var r = await Receipts.SingleOrDefaultAsync(x => x.Id == id, ct) ?? throw new NotFoundException("Receipt not found");
+        if (!Pdf.Looks(data)) return await AddPhotosAsync(id, [data], ct);
+        var old = r.DocumentId;
+        r.DocumentId = (await files.SaveAsync(Hid, data, Pdf.ContentType, fileName, ct)).Id;
+        await db.SaveChangesAsync(ct);
+        await files.DeleteAsync(old, ct);
+        return await GetReceiptAsync(id);
+    }
+
+    /// <summary>Marks a bill paid to the company on a date, or not paid (null).</summary>
+    public async Task<ReceiptDto> SetBillPaidAsync(int id, DateOnly? paidOn)
+    {
+        var r = await Receipts.SingleOrDefaultAsync(x => x.Id == id) ?? throw new NotFoundException("Receipt not found");
+        r.BillPaidOn = paidOn;
         await db.SaveChangesAsync();
         return await GetReceiptAsync(id);
     }
@@ -203,9 +261,11 @@ public class ExpensesService(HomeStackDbContext db, ICurrentUser me, TimeProvide
         var r = await Receipts.Include(x => x.Lines).SingleOrDefaultAsync(x => x.Id == id) ?? throw new NotFoundException("Receipt not found");
         var itemIds = r.Lines.Select(l => l.ItemId).OfType<int>().Distinct().ToList();
         var photos = r.ImageIds.ToList();
+        var document = r.DocumentId;
         db.Remove(r);
         await db.SaveChangesAsync();
         foreach (var p in photos) await images.DeleteAsync(p);
+        await files.DeleteAsync(document);
 
         var stillUsed = await db.Set<ReceiptLine>().Where(l => l.ItemId != null && itemIds.Contains(l.ItemId.Value))
             .Select(l => l.ItemId!.Value).Distinct().ToListAsync();
@@ -217,7 +277,7 @@ public class ExpensesService(HomeStackDbContext db, ICurrentUser me, TimeProvide
         }
     }
 
-    private async Task<Store?> GetOrCreateStoreAsync(string? name)
+    internal async Task<Store?> GetOrCreateStoreAsync(string? name)
     {
         if (Clean(name) is not { } n) return null;
         if (await FindStoreAsync(n) is { } s) return s;
@@ -236,19 +296,30 @@ public class ExpensesService(HomeStackDbContext db, ICurrentUser me, TimeProvide
         if (to is { } t) q = q.Where(r => r.PurchasedAt <= t);
         if (storeId is { } s) q = q.Where(r => r.StoreId == s);
         var list = await q.OrderByDescending(r => r.PurchasedAt).ThenByDescending(r => r.Id).Take(500)
-            .Select(r => new { r.Id, Store = r.Store!.Name, r.PurchasedAt, r.Total, Lines = r.Lines.Count, r.Source, r.ImageIds }).ToListAsync();
-        return list.Select(r => new ReceiptSummaryDto(r.Id, r.Store, r.PurchasedAt, r.Total, r.Lines, r.Source, r.ImageIds.Count > 0)).ToList();
+            .Select(r => new
+            {
+                r.Id, Store = r.Store!.Name, r.PurchasedAt, r.Total, Lines = r.Lines.Count, First = r.Lines.Select(l => l.Name).FirstOrDefault(),
+                r.Source, r.ImageIds, r.DocumentId, r.DueDate, r.BillPaidOn,
+                Outstanding = r.Shares.Where(s => s.ReceivedAt == null).Select(s => s.Amount).ToList(),
+            }).ToListAsync();
+        // A manual expense or rent with no store shows its description instead.
+        return list.Select(r => new ReceiptSummaryDto(r.Id, r.Store ?? (r.Lines == 1 ? r.First : null), r.PurchasedAt, r.Total, r.Lines, r.Source,
+            r.ImageIds.Count > 0 || r.DocumentId != null, r.DueDate, r.BillPaidOn, r.Outstanding.Sum())).ToList();
     }
 
     public async Task<ReceiptDto> GetReceiptAsync(int id)
     {
-        var r = await Receipts.Include(x => x.Store).Include(x => x.Lines).SingleOrDefaultAsync(x => x.Id == id)
-            ?? throw new NotFoundException("Receipt not found");
+        var r = await Receipts.Include(x => x.Store).Include(x => x.Lines).ThenInclude(l => l.Split).Include(x => x.Split).Include(x => x.Shares)
+            .AsSplitQuery().SingleOrDefaultAsync(x => x.Id == id) ?? throw new NotFoundException("Receipt not found");
+        var names = r.PaidByPersonId is null ? [] : await people.NamesAsync();
         return new ReceiptDto(r.Id, r.Store?.Name, r.PurchasedAt, r.Subtotal, r.Tax, r.Total, r.Note, r.Source,
             r.ImageIds.Select(i => StoredImage.Src(i, null)!).ToList(),
             r.Lines.OrderBy(l => l.Sort).Select(l => new ReceiptLineDto(l.Id, l.ItemId, l.Code, l.Name, l.Raw, l.Category, l.Quantity,
-                l.Unit, l.UnitPrice, l.Amount, l.Discount)).ToList(),
-            r.CreatedAt);
+                l.Unit, l.UnitPrice, l.Amount, l.Discount, SplitMath.Dtos(l.Split))).ToList(),
+            r.CreatedAt,
+            r.PaidByPersonId, r.PaidByPersonId is int p ? names.GetValueOrDefault(p) : null, SplitMath.Dtos(r.Split),
+            r.Shares.OrderBy(s => names.GetValueOrDefault(s.PersonId)).Select(s => new ShareDto(s.Id, s.PersonId, names.GetValueOrDefault(s.PersonId, "?"), s.Amount, s.ReceivedAt)).ToList(),
+            r.DueDate, r.BillPaidOn, r.RecurringId, r.DocumentId is Guid doc ? StoredFile.Src(doc) : null);
     }
 
     // ---------- Tracked items ----------

@@ -81,6 +81,9 @@ namespace HomeStack.Api.Migrations
                     b.Property<int>("HouseholdId")
                         .HasColumnType("INTEGER");
 
+                    b.Property<bool>("IsAdmin")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(80)
@@ -103,6 +106,39 @@ namespace HomeStack.Api.Migrations
                         .IsUnique();
 
                     b.ToTable("users", (string)null);
+                });
+
+            modelBuilder.Entity("HomeStack.Core.Images.StoredFile", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<byte[]>("Data")
+                        .IsRequired()
+                        .HasColumnType("BLOB");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("HouseholdId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("HouseholdId");
+
+                    b.ToTable("files", (string)null);
                 });
 
             modelBuilder.Entity("HomeStack.Core.Images.StoredImage", b =>
@@ -219,13 +255,52 @@ namespace HomeStack.Api.Migrations
                     b.ToTable("expenses_item_codes", (string)null);
                 });
 
+            modelBuilder.Entity("HomeStack.Modules.Expenses.Person", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("Archived")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("HouseholdId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("UserId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("HouseholdId");
+
+                    b.ToTable("expenses_people", (string)null);
+                });
+
             modelBuilder.Entity("HomeStack.Modules.Expenses.Receipt", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
+                    b.Property<DateOnly?>("BillPaidOn")
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("DocumentId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateOnly?>("DueDate")
                         .HasColumnType("TEXT");
 
                     b.Property<int>("HouseholdId")
@@ -239,8 +314,14 @@ namespace HomeStack.Api.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("TEXT");
 
+                    b.Property<int?>("PaidByPersonId")
+                        .HasColumnType("INTEGER");
+
                     b.Property<DateOnly>("PurchasedAt")
                         .HasColumnType("TEXT");
+
+                    b.Property<int?>("RecurringId")
+                        .HasColumnType("INTEGER");
 
                     b.Property<string>("Source")
                         .IsRequired()
@@ -263,6 +344,10 @@ namespace HomeStack.Api.Migrations
                         .HasColumnType("INTEGER");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("PaidByPersonId");
+
+                    b.HasIndex("RecurringId");
 
                     b.HasIndex("StoreId");
 
@@ -327,6 +412,127 @@ namespace HomeStack.Api.Migrations
                     b.HasIndex("ReceiptId");
 
                     b.ToTable("expenses_receipt_lines", (string)null);
+                });
+
+            modelBuilder.Entity("HomeStack.Modules.Expenses.Recurring", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("Active")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<decimal?>("Amount")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Category")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("DayOfMonth")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Frequency")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("HouseholdId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateOnly>("NextDate")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("PaidByPersonId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Payee")
+                        .HasMaxLength(80)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("HouseholdId", "NextDate");
+
+                    b.ToTable("expenses_recurring", (string)null);
+                });
+
+            modelBuilder.Entity("HomeStack.Modules.Expenses.Share", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<decimal>("Amount")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("PersonId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("ReceiptId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("ReceivedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("ReceivedByUserId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PersonId");
+
+                    b.HasIndex("ReceiptId");
+
+                    b.ToTable("expenses_shares", (string)null);
+                });
+
+            modelBuilder.Entity("HomeStack.Modules.Expenses.SplitPart", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("LineId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("PersonId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("ReceiptId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("RecurringId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<double>("Weight")
+                        .HasColumnType("REAL");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("LineId");
+
+                    b.HasIndex("PersonId");
+
+                    b.HasIndex("ReceiptId");
+
+                    b.HasIndex("RecurringId");
+
+                    b.ToTable("expenses_split_parts", (string)null);
                 });
 
             modelBuilder.Entity("HomeStack.Modules.Expenses.Store", b =>
@@ -815,6 +1021,15 @@ namespace HomeStack.Api.Migrations
                     b.Navigation("Household");
                 });
 
+            modelBuilder.Entity("HomeStack.Core.Images.StoredFile", b =>
+                {
+                    b.HasOne("HomeStack.Core.Data.Household", null)
+                        .WithMany()
+                        .HasForeignKey("HouseholdId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("HomeStack.Core.Images.StoredImage", b =>
                 {
                     b.HasOne("HomeStack.Core.Data.Household", null)
@@ -850,6 +1065,16 @@ namespace HomeStack.Api.Migrations
 
             modelBuilder.Entity("HomeStack.Modules.Expenses.Receipt", b =>
                 {
+                    b.HasOne("HomeStack.Modules.Expenses.Person", null)
+                        .WithMany()
+                        .HasForeignKey("PaidByPersonId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("HomeStack.Modules.Expenses.Recurring", null)
+                        .WithMany()
+                        .HasForeignKey("RecurringId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("HomeStack.Modules.Expenses.Store", "Store")
                         .WithMany()
                         .HasForeignKey("StoreId")
@@ -872,6 +1097,45 @@ namespace HomeStack.Api.Migrations
                         .IsRequired();
 
                     b.Navigation("Item");
+                });
+
+            modelBuilder.Entity("HomeStack.Modules.Expenses.Share", b =>
+                {
+                    b.HasOne("HomeStack.Modules.Expenses.Person", null)
+                        .WithMany()
+                        .HasForeignKey("PersonId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("HomeStack.Modules.Expenses.Receipt", null)
+                        .WithMany("Shares")
+                        .HasForeignKey("ReceiptId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("HomeStack.Modules.Expenses.SplitPart", b =>
+                {
+                    b.HasOne("HomeStack.Modules.Expenses.ReceiptLine", null)
+                        .WithMany("Split")
+                        .HasForeignKey("LineId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.HasOne("HomeStack.Modules.Expenses.Person", null)
+                        .WithMany()
+                        .HasForeignKey("PersonId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("HomeStack.Modules.Expenses.Receipt", null)
+                        .WithMany("Split")
+                        .HasForeignKey("ReceiptId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.HasOne("HomeStack.Modules.Expenses.Recurring", null)
+                        .WithMany("Split")
+                        .HasForeignKey("RecurringId")
+                        .OnDelete(DeleteBehavior.Cascade);
                 });
 
             modelBuilder.Entity("HomeStack.Modules.Inventory.InventoryItem", b =>
@@ -915,6 +1179,20 @@ namespace HomeStack.Api.Migrations
             modelBuilder.Entity("HomeStack.Modules.Expenses.Receipt", b =>
                 {
                     b.Navigation("Lines");
+
+                    b.Navigation("Shares");
+
+                    b.Navigation("Split");
+                });
+
+            modelBuilder.Entity("HomeStack.Modules.Expenses.ReceiptLine", b =>
+                {
+                    b.Navigation("Split");
+                });
+
+            modelBuilder.Entity("HomeStack.Modules.Expenses.Recurring", b =>
+                {
+                    b.Navigation("Split");
                 });
 
             modelBuilder.Entity("HomeStack.Modules.Meals.Recipe", b =>

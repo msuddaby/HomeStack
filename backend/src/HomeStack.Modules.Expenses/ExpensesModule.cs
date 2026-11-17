@@ -20,7 +20,11 @@ public class ExpensesModule : IModule
     {
         services.AddScoped<ExpensesService>();
         services.AddScoped<ReceiptReader>();
+        services.AddScoped<PeopleService>();
+        services.AddScoped<BillsService>();
         services.AddScoped<HomeStack.Core.Notifications.IDigestSource, ExpensesDigest>();
+        services.AddScoped<HomeStack.Core.Notifications.IDigestSource, BillsDigest>();
+        services.AddHostedService<RecurringWorker>();
     }
 
     public void ConfigureModel(ModelBuilder mb)
@@ -55,11 +59,48 @@ public class ExpensesModule : IModule
             e.Property(x => x.Source).HasConversion<string>().HasMaxLength(16);
             e.HasOne(x => x.Store).WithMany().HasForeignKey(x => x.StoreId).OnDelete(DeleteBehavior.SetNull);
             e.HasMany(x => x.Lines).WithOne().HasForeignKey(x => x.ReceiptId).OnDelete(DeleteBehavior.Cascade);
+            e.HasMany(x => x.Split).WithOne().HasForeignKey(x => x.ReceiptId).OnDelete(DeleteBehavior.Cascade);
+            e.HasMany(x => x.Shares).WithOne().HasForeignKey(x => x.ReceiptId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<Person>().WithMany().HasForeignKey(x => x.PaidByPersonId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<Recurring>().WithMany().HasForeignKey(x => x.RecurringId).OnDelete(DeleteBehavior.SetNull);
             e.HasIndex(x => new { x.HouseholdId, x.PurchasedAt });
+        });
+        mb.Entity<Person>(e =>
+        {
+            e.ToTable("expenses_people");
+            e.Property(x => x.Name).HasMaxLength(80);
+            e.HasIndex(x => x.HouseholdId);
+        });
+        mb.Entity<SplitPart>(e =>
+        {
+            e.ToTable("expenses_split_parts");
+            e.HasOne<Person>().WithMany().HasForeignKey(x => x.PersonId).OnDelete(DeleteBehavior.Restrict);
+            e.HasIndex(x => x.ReceiptId);
+            e.HasIndex(x => x.LineId);
+            e.HasIndex(x => x.RecurringId);
+        });
+        mb.Entity<Share>(e =>
+        {
+            e.ToTable("expenses_shares");
+            e.HasOne<Person>().WithMany().HasForeignKey(x => x.PersonId).OnDelete(DeleteBehavior.Restrict);
+            e.HasIndex(x => x.ReceiptId);
+            e.HasIndex(x => x.PersonId);
+        });
+        mb.Entity<Recurring>(e =>
+        {
+            e.ToTable("expenses_recurring");
+            e.Property(x => x.Name).HasMaxLength(80);
+            e.Property(x => x.Payee).HasMaxLength(80);
+            e.Property(x => x.Category).HasMaxLength(32);
+            e.Property(x => x.Note).HasMaxLength(500);
+            e.Property(x => x.Frequency).HasConversion<string>().HasMaxLength(16);
+            e.HasMany(x => x.Split).WithOne().HasForeignKey(x => x.RecurringId).OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(x => new { x.HouseholdId, x.NextDate });
         });
         mb.Entity<ReceiptLine>(e =>
         {
             e.ToTable("expenses_receipt_lines");
+            e.HasMany(x => x.Split).WithOne().HasForeignKey(x => x.LineId).OnDelete(DeleteBehavior.Cascade);
             e.Property(x => x.Code).HasMaxLength(40);
             e.Property(x => x.Name).HasMaxLength(120);
             e.Property(x => x.Raw).HasMaxLength(200);
@@ -114,5 +155,54 @@ public class ExpensesModule : IModule
         g.MapPost("/items/{id:int}/merge", (int id, MergeItemsRequest req, ExpensesService s) => s.MergeItemsAsync(id, req)).Validate<MergeItemsRequest>();
 
         g.MapGet("/summary", (string? month, int? months, ExpensesService s) => s.GetSummaryAsync(month, months ?? 6));
+
+        // Splitting: people, who paid and who owes what
+        g.MapGet("/people", (PeopleService s) => s.ListAsync());
+        g.MapPost("/people", (PersonRequest req, PeopleService s) => s.AddAsync(req)).Validate<PersonRequest>();
+        g.MapPut("/people/{id:int}", (int id, PersonRequest req, PeopleService s) => s.RenameAsync(id, req)).Validate<PersonRequest>();
+        g.MapDelete("/people/{id:int}", async (int id, PeopleService s) => { await s.ArchiveAsync(id); return Results.NoContent(); });
+        g.MapPut("/receipts/{id:int}/split", (int id, SetSplitRequest req, ExpensesService s) => s.SetSplitAsync(id, req)).Validate<SetSplitRequest>();
+        g.MapGet("/balances", (PeopleService s) => s.BalancesAsync());
+        g.MapPut("/shares/{id:int}/received", async (int id, MarkReceivedRequest req, PeopleService s) =>
+        {
+            await s.MarkReceivedAsync(id, req.Received);
+            return Results.NoContent();
+        });
+
+        // Bills: read a PDF or photos, save, attach the original, mark paid
+        g.MapPost("/bills/read", async (IFormFileCollection form, BillsService bills, CancellationToken ct) =>
+        {
+            var uploads = form.GetFiles("files");
+            if (uploads.Count is 0 or > BillsService.MaxImages) throw new BadRequestException($"Send a PDF or 1 to {BillsService.MaxImages} photos.");
+            var files = new List<(byte[], string)>();
+            foreach (var f in uploads)
+            {
+                if (f.Length > BillsService.MaxFileBytes) throw new BadRequestException("Files must be under 15 MB.");
+                using var ms = new MemoryStream();
+                await f.CopyToAsync(ms, ct);
+                var data = ms.ToArray();
+                if (!Pdf.Looks(data) && !ReceiptReader.ImageTypes.Contains(f.ContentType))
+                    throw new BadRequestException("Bills must be a PDF, or JPEG, PNG or WebP photos.");
+                files.Add((data, f.ContentType));
+            }
+            return await bills.ReadAsync(files, ct);
+        }).DisableAntiforgery();
+        g.MapPost("/bills", (SaveBillRequest req, BillsService s) => s.SaveAsync(req)).Validate<SaveBillRequest>();
+        g.MapPost("/receipts/{id:int}/document", async (int id, IFormFile? file, ExpensesService s, CancellationToken ct) =>
+        {
+            if (file is null || file.Length == 0) throw new BadRequestException("Choose a file to attach.");
+            if (file.Length > BillsService.MaxFileBytes) throw new BadRequestException("Files must be under 15 MB.");
+            using var ms = new MemoryStream();
+            await file.CopyToAsync(ms, ct);
+            return await s.AttachDocumentAsync(id, ms.ToArray(), Path.GetFileName(file.FileName), ct);
+        }).DisableAntiforgery();
+        g.MapPut("/receipts/{id:int}/bill-paid", (int id, BillPaidRequest req, ExpensesService s) => s.SetBillPaidAsync(id, req.PaidOn));
+
+        // Recurring payments and expected bills
+        g.MapGet("/recurring", (BillsService s) => s.ListRecurringAsync());
+        g.MapPost("/recurring", (RecurringRequest req, BillsService s) => s.CreateRecurringAsync(req)).Validate<RecurringRequest>();
+        g.MapPut("/recurring/{id:int}", (int id, RecurringRequest req, BillsService s) => s.UpdateRecurringAsync(id, req)).Validate<RecurringRequest>();
+        g.MapDelete("/recurring/{id:int}", async (int id, BillsService s) => { await s.DeleteRecurringAsync(id); return Results.NoContent(); });
+        g.MapGet("/upcoming", (int? days, BillsService s) => s.UpcomingAsync(days ?? 30));
     }
 }

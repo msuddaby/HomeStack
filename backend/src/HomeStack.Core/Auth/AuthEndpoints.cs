@@ -28,7 +28,8 @@ public record ChangePasswordRequest(
     [Required] string CurrentPassword,
     [Required, StringLength(200, MinimumLength = 8)] string NewPassword);
 
-public record UserDto(int Id, string Name, string Username);
+public record UserDto(int Id, string Name, string Username, bool IsAdmin = false);
+public record SetAdminRequest(bool IsAdmin);
 public record HouseholdDto(int Id, string Name);
 public record MeDto(UserDto User, HouseholdDto Household);
 public record AuthStatusDto(bool NeedsSetup, bool Authenticated);
@@ -54,6 +55,7 @@ public static class AuthEndpoints
             await db.SaveChangesAsync(ct);
 
             var user = NewUser(household.Id, req.Name, req.Username, req.Password, hasher);
+            user.IsAdmin = true;
             db.Users.Add(user);
             await db.SaveChangesAsync(ct);
 
@@ -101,7 +103,20 @@ public static class AuthEndpoints
 
         household.MapGet("/users", async (ICurrentUser me, HomeStackDbContext db) =>
             await db.Users.Where(u => u.HouseholdId == me.HouseholdId).OrderBy(u => u.Name)
-                .Select(u => new UserDto(u.Id, u.Name, u.Username)).ToListAsync());
+                .Select(u => new UserDto(u.Id, u.Name, u.Username, u.IsAdmin)).ToListAsync());
+
+        // Admins make (or stop making) other members admin. There's always at least one.
+        household.MapPut("/users/{id:int}/admin", async (int id, SetAdminRequest req, ICurrentUser me, HomeStackDbContext db) =>
+        {
+            await me.RequireAdminAsync(db);
+            var user = await db.Users.SingleOrDefaultAsync(u => u.Id == id && u.HouseholdId == me.HouseholdId)
+                ?? throw new NotFoundException("User not found");
+            if (!req.IsAdmin && user.IsAdmin && await db.Users.CountAsync(u => u.HouseholdId == me.HouseholdId && u.IsAdmin) == 1)
+                throw new BadRequestException("The household needs at least one admin.");
+            user.IsAdmin = req.IsAdmin;
+            await db.SaveChangesAsync();
+            return new UserDto(user.Id, user.Name, user.Username, user.IsAdmin);
+        });
 
         household.MapPost("/users", async (CreateUserRequest req, ICurrentUser me, HomeStackDbContext db, IPasswordHasher<User> hasher) =>
         {
@@ -121,6 +136,8 @@ public static class AuthEndpoints
             if (id == me.UserId) throw new BadRequestException("You can't remove yourself.");
             var user = await db.Users.SingleOrDefaultAsync(u => u.Id == id && u.HouseholdId == me.HouseholdId)
                 ?? throw new NotFoundException("User not found");
+            if (user.IsAdmin && await db.Users.CountAsync(u => u.HouseholdId == me.HouseholdId && u.IsAdmin) == 1)
+                throw new BadRequestException("That's the household's only admin. Make someone else admin first.");
             db.Users.Remove(user);
             await db.SaveChangesAsync();
             return Results.NoContent();
@@ -146,5 +163,5 @@ public static class AuthEndpoints
             new AuthenticationProperties { IsPersistent = true });
     }
 
-    private static MeDto ToMe(User u, Household h) => new(new UserDto(u.Id, u.Name, u.Username), new HouseholdDto(h.Id, h.Name));
+    private static MeDto ToMe(User u, Household h) => new(new UserDto(u.Id, u.Name, u.Username, u.IsAdmin), new HouseholdDto(h.Id, h.Name));
 }

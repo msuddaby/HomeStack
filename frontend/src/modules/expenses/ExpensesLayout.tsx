@@ -1,25 +1,30 @@
 import { useState } from "react";
 import { NavLink, Outlet } from "react-router";
-import { Plus, Receipt } from "lucide-react";
+import { FileText, Plus, Receipt } from "lucide-react";
 import { PageHeader } from "@/core/layout";
 import { Button, cx } from "@/core/ui";
+import { BillSheet } from "./BillSheet";
 import { ManualExpenseSheet } from "./ManualExpenseSheet";
 import { ScanReceiptSheet } from "./ScanReceiptSheet";
 
 const tabs = [
   { to: "/expenses", label: "Overview", end: true },
   { to: "/expenses/receipts", label: "Receipts" },
+  { to: "/expenses/bills", label: "Bills" },
+  { to: "/expenses/owed", label: "Owed" },
   { to: "/expenses/items", label: "Items" },
 ];
 
 export function ExpensesLayout() {
   const [scanning, setScanning] = useState(false);
   const [adding, setAdding] = useState(false);
+  const [billing, setBilling] = useState(false);
   return (
     <>
       <PageHeader title="Spending" action={
-        <div className="flex gap-2">
+        <div className="flex gap-1">
           <Button variant="ghost" className="px-3" onClick={() => setAdding(true)} aria-label="Add an expense"><Plus className="size-4" /><span className="hidden sm:inline">Expense</span></Button>
+          <Button variant="ghost" className="px-3" onClick={() => setBilling(true)} aria-label="Upload a bill"><FileText className="size-4" /><span className="hidden sm:inline">Bill</span></Button>
           <Button variant="primary" onClick={() => setScanning(true)}><Receipt className="size-4" />Scan</Button>
         </div>
       } />
@@ -35,6 +40,7 @@ export function ExpensesLayout() {
       <Outlet />
       <ScanReceiptSheet open={scanning} onClose={() => setScanning(false)} />
       <ManualExpenseSheet open={adding} onClose={() => setAdding(false)} />
+      <BillSheet open={billing} onClose={() => setBilling(false)} />
     </>
   );
 }

@@ -1,5 +1,5 @@
 import { Link } from "react-router";
-import { Camera, PenLine } from "lucide-react";
+import { Camera, FileText, PenLine, Repeat } from "lucide-react";
 import { shortDate } from "@/core/dates";
 import { Empty, Spinner } from "@/core/ui";
 import { useReceipts, type ReceiptSummary } from "./api";
@@ -45,11 +45,17 @@ function Rows({ receipts }: { receipts: ReceiptSummary[] }) {
         <li key={r.id}>
           <Link to={`/expenses/receipts/${r.id}`} className="flex items-center gap-3 py-2.5 hover:bg-surface-2 sm:px-2">
             <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-surface-2 text-muted">
-              {r.source === "manual" ? <PenLine className="size-4" /> : <Camera className="size-4" />}
+              {r.source === "manual" ? <PenLine className="size-4" /> : r.source === "bill" ? <FileText className="size-4" />
+                : r.source === "recurring" ? <Repeat className="size-4" /> : <Camera className="size-4" />}
             </span>
             <div className="min-w-0 flex-1">
-              <p className="truncate font-medium">{r.store ?? (r.source === "manual" ? "Expense" : "Receipt")}</p>
-              <p className="text-xs text-muted">{shortDate(r.purchasedAt)} · {r.lineCount} {r.lineCount === 1 ? "line" : "lines"}</p>
+              <p className="truncate font-medium">{r.store ?? (r.source === "manual" ? "Expense" : r.source === "bill" ? "Bill" : "Receipt")}</p>
+              <p className="text-xs text-muted">
+                {shortDate(r.purchasedAt)}
+                {r.source === "scan" && ` · ${r.lineCount} ${r.lineCount === 1 ? "line" : "lines"}`}
+                {r.source === "bill" && (r.billPaidOn ? " · paid" : r.dueDate ? ` · due ${shortDate(r.dueDate)}` : " · unpaid")}
+                {r.outstanding > 0 && ` · ${money(r.outstanding)} owed`}
+              </p>
             </div>
             <span className="font-medium tabular-nums">{money(r.total)}</span>
           </Link>

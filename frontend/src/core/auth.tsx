@@ -3,7 +3,7 @@ import { useState, type FormEvent, type ReactNode } from "react";
 import { api, ApiError } from "./api";
 import { Button, ErrorText, Field, Input, Spinner } from "./ui";
 
-export interface Me { user: { id: number; name: string; username: string }; household: { id: number; name: string } }
+export interface Me { user: { id: number; name: string; username: string; isAdmin: boolean }; household: { id: number; name: string } }
 interface AuthStatus { needsSetup: boolean; authenticated: boolean }
 
 export function useMe() {

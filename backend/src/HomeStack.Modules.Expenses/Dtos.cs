@@ -54,12 +54,15 @@ public record SaveLineRequest(
     // Food to put into inventory from this line.
     AddItemRequest? Inventory,
     // For food lines: whether "Put away" was ticked. Remembered on the item for next time. Null for non-food.
-    bool? TrackInventory = null) : IValidatable
+    bool? TrackInventory = null,
+    // Who this line is split between, when not the receipt's split. Null or empty: the receipt's split.
+    List<SplitPartDto>? Split = null) : IValidatable
 {
     public IEnumerable<ValidationResult> Validate()
     {
         if (!ExpenseCategories.Exists(Category))
             yield return new ValidationResult($"Unknown category '{Category}'.", [nameof(Category)]);
+        foreach (var r in SplitPartDto.Check(Split, nameof(Split))) yield return r;
         if (Inventory is not null)
             foreach (var r in DtoValidator.Validate(Inventory))
                 yield return new ValidationResult(r.ErrorMessage, r.MemberNames.Select(m => $"inventory.{m}"));
@@ -73,10 +76,14 @@ public record SaveReceiptRequest(
     [Range(0, 1000000)] decimal? Tax,
     [Range(-1000000, 1000000)] decimal Total,
     [StringLength(500)] string? Note,
-    [Required, MaxLength(300)] List<SaveLineRequest> Lines) : IValidatable
+    [Required, MaxLength(300)] List<SaveLineRequest> Lines,
+    // Splitting: who paid (default: you, when there's a split) and the default split for every line.
+    int? PaidByPersonId = null,
+    List<SplitPartDto>? Split = null) : IValidatable
 {
     public IEnumerable<ValidationResult> Validate()
     {
+        foreach (var r in SplitPartDto.Check(Split, nameof(Split))) yield return r;
         for (var i = 0; i < (Lines?.Count ?? 0); i++)
             foreach (var r in DtoValidator.Validate(Lines![i]))
                 yield return new ValidationResult(r.ErrorMessage, r.MemberNames.Select(m => $"lines[{i}].{m}").ToList());
@@ -90,14 +97,133 @@ public record ManualExpenseRequest(
     [Range(0.01, 1000000)] decimal Amount,
     [Required] string Category,
     [Required, StringLength(120, MinimumLength = 1)] string Description,
-    [StringLength(500)] string? Note) : IValidatable
+    [StringLength(500)] string? Note,
+    int? PaidByPersonId = null,
+    List<SplitPartDto>? Split = null) : IValidatable
 {
     public IEnumerable<ValidationResult> Validate()
     {
         if (!ExpenseCategories.Exists(Category))
             yield return new ValidationResult($"Unknown category '{Category}'.", [nameof(Category)]);
+        foreach (var r in SplitPartDto.Check(Split, nameof(Split))) yield return r;
     }
 }
+
+// ---------- People and splitting ----------
+
+/// <summary>
+/// One person's part of a split. Weights are shared out in proportion: 1 each for an equal split, or the amounts
+/// themselves for custom amounts ($900 / $600 of rent).
+/// </summary>
+public record SplitPartDto(int PersonId, double Weight = 1)
+{
+    internal static IEnumerable<ValidationResult> Check(List<SplitPartDto>? parts, string field)
+    {
+        if (parts is null) yield break;
+        if (parts.Count > 50) yield return new("Too many people in a split.", [field]);
+        if (parts.Any(p => p.Weight is <= 0 or > 10_000_000 || double.IsNaN(p.Weight))) yield return new("Split shares must be more than zero.", [field]);
+        if (parts.Select(p => p.PersonId).Distinct().Count() != parts.Count) yield return new("Someone is in the split twice.", [field]);
+    }
+}
+
+public record PersonDto(int Id, string Name, int? UserId, bool Archived, bool IsMe);
+public record PersonRequest([Required, StringLength(80, MinimumLength = 1)] string Name);
+
+public record LineSplitRequest(int LineId, List<SplitPartDto>? Split);
+
+/// <summary>Change who paid and how a saved expense is split (lines not listed keep their split).</summary>
+public record SetSplitRequest(int? PaidByPersonId, List<SplitPartDto>? Split, List<LineSplitRequest>? Lines) : IValidatable
+{
+    public IEnumerable<ValidationResult> Validate()
+    {
+        foreach (var r in SplitPartDto.Check(Split, nameof(Split))) yield return r;
+        foreach (var l in Lines ?? []) foreach (var r in SplitPartDto.Check(l.Split, nameof(Lines))) yield return r;
+    }
+}
+
+public record ShareDto(int Id, int PersonId, string Person, decimal Amount, DateTime? ReceivedAt);
+
+public record OwedItemDto(int ShareId, int ReceiptId, string What, DateOnly Date, decimal Amount, DateTime? ReceivedAt);
+/// <summary>What one person owes another, outstanding first.</summary>
+public record BalanceDto(int PersonId, string Person, int OwedToPersonId, string OwedTo, decimal Outstanding, List<OwedItemDto> Items);
+public record BalancesDto(bool CanMarkReceived, int? MyPersonId, List<BalanceDto> Balances);
+public record MarkReceivedRequest(bool Received);
+
+// ---------- Bills ----------
+
+public record RecurringRefDto(int Id, string Name, int? PaidByPersonId, List<SplitPartDto> Split);
+
+public record BillDraftDto(
+    string? Payee, DateOnly? StatementDate, DateOnly? DueDate, decimal? Amount, string Category, string? Account,
+    DateOnly? PeriodStart, DateOnly? PeriodEnd, string? Note,
+    // The expected bill or recurring payment it looks like (same payee): its split is the starting point.
+    RecurringRefDto? Recurring,
+    int? DuplicateOf);
+
+public record SaveBillRequest(
+    [Required, StringLength(80, MinimumLength = 1)] string Payee,
+    DateOnly StatementDate,
+    DateOnly? DueDate,
+    [Range(0.01, 1000000)] decimal Amount,
+    [Required] string Category,
+    [StringLength(120)] string? Description,
+    [StringLength(500)] string? Note,
+    int? PaidByPersonId,
+    List<SplitPartDto>? Split,
+    int? RecurringId,
+    // When the bill was paid to the company; null if not yet.
+    DateOnly? PaidOn) : IValidatable
+{
+    public IEnumerable<ValidationResult> Validate()
+    {
+        if (!ExpenseCategories.Exists(Category))
+            yield return new ValidationResult($"Unknown category '{Category}'.", [nameof(Category)]);
+        foreach (var r in SplitPartDto.Check(Split, nameof(Split))) yield return r;
+    }
+}
+
+/// <summary>Mark a bill paid to the company (with the date), or not paid (null).</summary>
+public record BillPaidRequest(DateOnly? PaidOn);
+
+// ---------- Recurring payments and expected bills ----------
+
+public record RecurringDto(
+    int Id, string Name, string? Payee, string Category, decimal? Amount, Frequency Frequency, DateOnly NextDate,
+    int? PaidByPersonId, string? PaidBy, List<SplitPartDto> Split, bool Active, string? Note,
+    // No fixed amount: an expected bill, waiting to be uploaded each period.
+    bool Expected,
+    // The latest expense recorded for it.
+    int? LastReceiptId, DateOnly? LastDate, decimal? LastAmount);
+
+public record RecurringRequest(
+    [Required, StringLength(80, MinimumLength = 1)] string Name,
+    [StringLength(80)] string? Payee,
+    [Required] string Category,
+    // Null: an expected bill whose amount changes (uploaded each time).
+    [Range(0.01, 1000000)] decimal? Amount,
+    Frequency Frequency,
+    DateOnly NextDate,
+    int? PaidByPersonId,
+    List<SplitPartDto>? Split,
+    bool Active = true,
+    [StringLength(500)] string? Note = null) : IValidatable
+{
+    public IEnumerable<ValidationResult> Validate()
+    {
+        if (!ExpenseCategories.Exists(Category))
+            yield return new ValidationResult($"Unknown category '{Category}'.", [nameof(Category)]);
+        foreach (var r in SplitPartDto.Check(Split, nameof(Split))) yield return r;
+    }
+}
+
+public enum UpcomingKind { Bill, Recurring, Expected }
+
+/// <summary>
+/// Something coming up: an unpaid bill's due date, a fixed payment that will be recorded, or an expected bill
+/// (<see cref="Missing"/> once it's late and still not uploaded).
+/// </summary>
+public record UpcomingDto(UpcomingKind Kind, DateOnly Date, string Name, decimal? Amount, int? ReceiptId, int? RecurringId,
+    bool Overdue, bool Missing);
 
 public record UpdateReceiptRequest(
     [StringLength(80)] string? Store,
@@ -108,13 +234,19 @@ public record UpdateReceiptRequest(
 
 public record ReceiptLineDto(
     int Id, int? ItemId, string? Code, string Name, string? Raw, string Category, double Quantity, string? Unit,
-    decimal? UnitPrice, decimal Amount, decimal? Discount);
+    decimal? UnitPrice, decimal Amount, decimal? Discount, List<SplitPartDto> Split);
 
-public record ReceiptSummaryDto(int Id, string? Store, DateOnly PurchasedAt, decimal Total, int LineCount, ReceiptSource Source, bool HasPhoto);
+public record ReceiptSummaryDto(int Id, string? Store, DateOnly PurchasedAt, decimal Total, int LineCount, ReceiptSource Source, bool HasPhoto,
+    // Bills: when due and whether paid to the company.
+    DateOnly? DueDate = null, DateOnly? BillPaidOn = null,
+    // Shares still owed to whoever paid.
+    decimal Outstanding = 0);
 
 public record ReceiptDto(
     int Id, string? Store, DateOnly PurchasedAt, decimal? Subtotal, decimal? Tax, decimal Total, string? Note,
     ReceiptSource Source, List<string> Images, List<ReceiptLineDto> Lines, DateTime CreatedAt,
+    int? PaidByPersonId, string? PaidBy, List<SplitPartDto> Split, List<ShareDto> Shares,
+    DateOnly? DueDate, DateOnly? BillPaidOn, int? RecurringId, string? Document,
     // Inventory items added from this receipt, when saving.
     int AddedToInventory = 0);
 

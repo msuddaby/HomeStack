@@ -30,6 +30,22 @@ internal sealed class HttpCurrentUser(IHttpContextAccessor accessor, HouseholdSc
         ?? throw new UnauthorizedAccessException());
 }
 
+public static class CurrentUserExtensions
+{
+    /// <summary>Whether the signed-in member is a household admin (looked up fresh, so a change applies straight away).</summary>
+    public static Task<bool> IsAdminAsync(this ICurrentUser me, HomeStackDbContext db)
+    {
+        var uid = me.UserId;
+        return Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.AnyAsync(db.Users, u => u.Id == uid && u.IsAdmin);
+    }
+
+    /// <summary>Throws <see cref="ForbiddenException"/> unless the signed-in member is an admin.</summary>
+    public static async Task RequireAdminAsync(this ICurrentUser me, HomeStackDbContext db)
+    {
+        if (!await me.IsAdminAsync(db)) throw new ForbiddenException("Only a household admin can do that.");
+    }
+}
+
 public static class HomeStackClaims
 {
     public const string UserId = "hs:uid";
