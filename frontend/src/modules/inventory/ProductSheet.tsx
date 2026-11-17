@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { ImagePlus } from "lucide-react";
 import { ApiError, errorMessage } from "@/core/api";
 import { shrinkImage } from "@/core/ai";
-import { Button, ErrorText, Field, Input, Select, Sheet } from "@/core/ui";
+import { Button, ErrorText, Field, Input, PhotoButton, Select, Sheet } from "@/core/ui";
 import { useCategories, useProduct, useRemoveProductImage, useSaveProduct, useSetProductImage, type Product } from "./api";
 import { ProductThumb } from "./ProductThumb";
 
@@ -23,7 +23,7 @@ export function ProductSheet({ productId, onClose }: { productId: number | null;
   const save = useSaveProduct();
   const setImage = useSetProductImage();
   const removeImage = useRemoveProductImage();
-  const fileInput = useRef<HTMLInputElement>(null);
+  const [preparing, setPreparing] = useState(false);
   const [photoError, setPhotoError] = useState<string | null>(null);
   const [f, setF] = useState<Form | null>(null);
 
@@ -31,14 +31,19 @@ export function ProductSheet({ productId, onClose }: { productId: number | null;
   useEffect(() => { setF(null); save.reset(); setImage.reset(); removeImage.reset(); setPhotoError(null); }, [productId]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (product.data && !f) setF(toForm(product.data)); }, [product.data, f]);
 
-  const pickPhoto = async (file: File | undefined) => {
-    if (!file || productId == null) return;
+  const pickPhoto = async (file: File) => {
+    if (productId == null) return;
     setPhotoError(null);
+    setPreparing(true);
     try {
       // Phones take huge photos; the server keeps a ~400px copy, so don't upload more than it needs.
-      await setImage.mutateAsync({ id: productId, photo: await shrinkImage(file, 1024, 0.9) });
+      const photo = await shrinkImage(file, 1024, 0.9);
+      setPreparing(false);
+      await setImage.mutateAsync({ id: productId, photo });
     } catch (e) {
       setPhotoError(errorMessage(e));
+    } finally {
+      setPreparing(false);
     }
   };
 
@@ -62,9 +67,10 @@ export function ProductSheet({ productId, onClose }: { productId: number | null;
           <div className="col-span-2 flex items-center gap-3">
             {product.data && <ProductThumb product={product.data} emoji={cat?.emoji} className="size-20 rounded-2xl" emojiClassName="text-4xl" lazy={false} />}
             <div className="flex flex-wrap gap-2">
-              <Button type="button" onClick={() => fileInput.current?.click()} busy={setImage.isPending}>
-                <ImagePlus className="size-4" />{product.data?.image ? "Change photo" : "Add photo"}
-              </Button>
+              <PhotoButton onFile={pickPhoto} busy={preparing || setImage.isPending}>
+                {!(preparing || setImage.isPending) && <ImagePlus className="size-4" />}
+                {preparing ? "Preparing photo…" : setImage.isPending ? "Uploading…" : product.data?.image ? "Change photo" : "Add photo"}
+              </PhotoButton>
               {product.data?.image && (
                 <Button type="button" variant="ghost" busy={removeImage.isPending}
                   onClick={() => { setPhotoError(null); removeImage.mutate(productId!, { onError: (e) => setPhotoError(errorMessage(e)) }); }}>
@@ -72,8 +78,6 @@ export function ProductSheet({ productId, onClose }: { productId: number | null;
                 </Button>
               )}
             </div>
-            <input ref={fileInput} type="file" accept="image/*" hidden
-              onChange={(e) => { void pickPhoto(e.target.files?.[0]); e.target.value = ""; }} />
           </div>
           {photoError && <p className="col-span-2 -mt-1 text-sm text-danger">{photoError}</p>}
 

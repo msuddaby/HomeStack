@@ -12,18 +12,42 @@ const variants: Record<Variant, string> = {
   danger: "bg-danger-soft text-danger hover:opacity-90",
 };
 
+const buttonBase = "inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-4 text-sm font-medium transition disabled:opacity-50";
+
 export function Button({ variant = "secondary", busy, className, children, disabled, ...rest }:
   ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant; busy?: boolean }) {
   return (
     <button
       {...rest}
       disabled={disabled || busy}
-      className={cx("inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-4 text-sm font-medium transition disabled:opacity-50",
-        variants[variant], className)}
+      className={cx(buttonBase, variants[variant], className)}
     >
       {busy && <Loader2 className="size-4 animate-spin" />}
       {children}
     </button>
+  );
+}
+
+/**
+ * A button that opens the phone's camera / photo library. Built as a label around a visually hidden file input
+ * (not a hidden input clicked from code), which is the pattern iOS Safari and home-screen apps handle reliably.
+ * The input is only cleared after `onFile` finishes, because iOS can discard a picked photo's data once it is.
+ */
+export function PhotoButton({ onFile, busy, variant = "secondary", className, children }: {
+  onFile: (file: File) => Promise<void>; busy?: boolean; variant?: Variant; className?: string; children: ReactNode;
+}) {
+  return (
+    <label className={cx(buttonBase, variants[variant], busy ? "pointer-events-none opacity-50" : "cursor-pointer", className)}>
+      <input type="file" accept="image/*" className="sr-only" disabled={busy}
+        onChange={async (e) => {
+          const input = e.currentTarget;
+          const file = input.files?.[0];
+          if (!file) return;
+          try { await onFile(file); } finally { input.value = ""; }
+        }} />
+      {busy && <Loader2 className="size-4 animate-spin" />}
+      {children}
+    </label>
   );
 }
 

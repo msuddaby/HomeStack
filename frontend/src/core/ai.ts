@@ -24,14 +24,45 @@ export const AI_PRESETS: AiPreset[] = [
     hint: "Any OpenAI-compatible API: OpenRouter, LM Studio, Groq, vLLM…" },
 ];
 
+const unreadable = () => new Error("Couldn't read that photo. Try another one, or take it again.");
+
+/** Rejects if `promise` takes longer than `ms`, so a stuck decode shows an error instead of nothing. */
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(unreadable()), ms);
+    promise.then((v) => { clearTimeout(timer); resolve(v); }, (e) => { clearTimeout(timer); reject(e); });
+  });
+}
+
+/** Decodes a photo for drawing. Safari's createImageBitmap can refuse some photos; an <img> is the fallback. */
+async function decode(blob: Blob): Promise<{ source: CanvasImageSource; width: number; height: number; done: () => void }> {
+  try {
+    const bitmap = await createImageBitmap(blob);
+    return { source: bitmap, width: bitmap.width, height: bitmap.height, done: () => bitmap.close() };
+  } catch {
+    const url = URL.createObjectURL(blob);
+    const img = new Image();
+    img.src = url;
+    try { await img.decode(); } catch { URL.revokeObjectURL(url); throw unreadable(); }
+    return { source: img, width: img.naturalWidth, height: img.naturalHeight, done: () => URL.revokeObjectURL(url) };
+  }
+}
+
 /** Shrinks a phone photo to a sane upload (receipts stay legible at ~2000px on the long edge). */
-export async function shrinkImage(file: File, maxEdge = 2000, quality = 0.85): Promise<Blob> {
-  const bitmap = await createImageBitmap(file);
-  const scale = Math.min(1, maxEdge / Math.max(bitmap.width, bitmap.height));
-  const canvas = document.createElement("canvas");
-  canvas.width = Math.round(bitmap.width * scale);
-  canvas.height = Math.round(bitmap.height * scale);
-  canvas.getContext("2d")!.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-  bitmap.close();
-  return new Promise((resolve, reject) => canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("Couldn't read that photo"))), "image/jpeg", quality));
+export async function shrinkImage(file: Blob, maxEdge = 2000, quality = 0.85): Promise<Blob> {
+  return withTimeout((async () => {
+    // Copy into memory first: iOS can drop a picked photo's data once its file input is reset.
+    const data = new Blob([await file.arrayBuffer()], { type: file.type });
+    const image = await decode(data);
+    try {
+      const scale = Math.min(1, maxEdge / Math.max(image.width, image.height));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.round(image.width * scale));
+      canvas.height = Math.max(1, Math.round(image.height * scale));
+      canvas.getContext("2d")!.drawImage(image.source, 0, 0, canvas.width, canvas.height);
+      return await new Promise<Blob>((resolve, reject) => canvas.toBlob((b) => (b ? resolve(b) : reject(unreadable())), "image/jpeg", quality));
+    } finally {
+      image.done();
+    }
+  })(), 20_000);
 }

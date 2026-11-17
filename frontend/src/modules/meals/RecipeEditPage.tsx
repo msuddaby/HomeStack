@@ -1,10 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router";
 import { ArrowLeft, ImagePlus } from "lucide-react";
 import { ApiError, errorMessage } from "@/core/api";
 import { shrinkImage } from "@/core/ai";
 import { useToast } from "@/core/toast";
-import { Button, ErrorText, Field, Input, Spinner } from "@/core/ui";
+import { Button, ErrorText, Field, Input, PhotoButton, Spinner } from "@/core/ui";
 import { useRecipe, useRemoveRecipeImage, useSaveRecipe, useSetRecipeImage, type RecipeInput } from "./api";
 
 /** Photo changes wait for "Save recipe", like the rest of the form (a new recipe has nothing to attach to until then). */
@@ -33,13 +33,14 @@ export function RecipeEditPage() {
   const removeImage = useRemoveRecipeImage();
   const toast = useToast();
   const navigate = useNavigate();
-  const fileInput = useRef<HTMLInputElement>(null);
   const [f, setF] = useState<Form | null>(recipeId ? null : toForm(draft ?? empty));
   const [photo, setPhoto] = useState<PhotoChange>({ kind: "none" });
+  const [preparing, setPreparing] = useState(false);
   const [photoError, setPhotoError] = useState<string | null>(null);
 
+  // Fill the form once. Coming back from the camera refetches the recipe, which mustn't wipe what's been typed.
   useEffect(() => {
-    if (existing.data) setF(toForm({ ...existing.data, ingredients: existing.data.ingredients.map((i) => i.text) }));
+    if (existing.data) setF((prev) => prev ?? toForm({ ...existing.data, ingredients: existing.data.ingredients.map((i) => i.text) }));
   }, [existing.data]);
   // Free the preview's memory when it's replaced or the page closes.
   useEffect(() => () => { if (photo.kind === "new") URL.revokeObjectURL(photo.preview); }, [photo]);
@@ -51,16 +52,18 @@ export function RecipeEditPage() {
   const shown = photo.kind === "new" ? photo.preview : photo.kind === "remove" ? null
     : linkUnchanged && existing.data ? existing.data.image : f.imageUrl || null;
 
-  const pickPhoto = async (file: File | undefined) => {
-    if (!file) return;
+  const pickPhoto = async (file: File) => {
     setPhotoError(null);
+    setPreparing(true);
     try {
       // Phones take huge photos; the server keeps a ~1000px copy, so don't upload more than it needs.
       const blob = await shrinkImage(file, 1600, 0.88);
       setPhoto({ kind: "new", blob, preview: URL.createObjectURL(blob) });
-      setF({ ...f, imageUrl: "" });
+      setF((prev) => prev && { ...prev, imageUrl: "" });
     } catch (e) {
       setPhotoError(errorMessage(e));
+    } finally {
+      setPreparing(false);
     }
   };
   const set = (k: keyof Form) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setF({ ...f, [k]: e.target.value });
@@ -100,15 +103,14 @@ export function RecipeEditPage() {
           ? <img src={shown} alt="" className="aspect-[4/3] w-28 shrink-0 rounded-xl bg-surface-2 object-cover" />
           : <span className="flex aspect-[4/3] w-28 shrink-0 items-center justify-center rounded-xl bg-surface-2 text-3xl">🍽️</span>}
         <div className="flex flex-wrap gap-2">
-          <Button type="button" onClick={() => fileInput.current?.click()}>
-            <ImagePlus className="size-4" />{shown ? "Change photo" : "Add photo"}
-          </Button>
-          {shown && (
+          <PhotoButton onFile={pickPhoto} busy={preparing}>
+            {!preparing && <ImagePlus className="size-4" />}
+            {preparing ? "Preparing photo…" : shown ? "Change photo" : "Add photo"}
+          </PhotoButton>
+          {shown && !preparing && (
             <Button type="button" variant="ghost" onClick={() => { setPhoto({ kind: "remove" }); setF({ ...f, imageUrl: "" }); }}>Remove</Button>
           )}
         </div>
-        <input ref={fileInput} type="file" accept="image/*" hidden
-          onChange={(e) => { void pickPhoto(e.target.files?.[0]); e.target.value = ""; }} />
       </div>
       {photoError && <p className="-mt-2 text-sm text-danger">{photoError}</p>}
       <div className="grid grid-cols-3 gap-3">
