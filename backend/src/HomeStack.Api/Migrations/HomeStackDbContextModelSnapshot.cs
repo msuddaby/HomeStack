@@ -375,6 +375,13 @@ namespace HomeStack.Api.Migrations
                         .HasMaxLength(120)
                         .HasColumnType("TEXT");
 
+                    b.Property<double?>("PackQuantity")
+                        .HasColumnType("REAL");
+
+                    b.Property<string>("PackUnit")
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
                     b.Property<int?>("ProductId")
                         .HasColumnType("INTEGER");
 

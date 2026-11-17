@@ -57,7 +57,7 @@ public class ExpensesService(HomeStackDbContext db, ICurrentUser me, TimeProvide
         return items.ToDictionary(i => i.Id, i =>
         {
             var last = rows.Where(r => r.ItemId == i.Id).MaxBy(r => (r.Date, r.ReceiptId));
-            return new ItemRefDto(i.Id, i.Name, last?.Store, last?.EffectiveUnitPrice, i.SkipInventory);
+            return new ItemRefDto(i.Id, i.Name, last?.Store, last?.EffectiveUnitPrice, i.SkipInventory, i.PackQuantity, i.PackUnit);
         });
     }
 
@@ -88,12 +88,15 @@ public class ExpensesService(HomeStackDbContext db, ICurrentUser me, TimeProvide
                 Amount = line.Amount, Discount = line.Discount is > 0 ? line.Discount : null,
             });
             if (line.Inventory is { } add)
+            {
+                RememberPack(item, line, add);
                 itemsForInventory.Add((item, add with
                 {
                     PurchasedAt = add.PurchasedAt ?? req.PurchasedAt,
                     Price = add.Price ?? line.Amount,
                     Notes = add.Notes ?? (store is null ? null : $"From {store.Name}"),
                 }));
+            }
         }
         db.Add(receipt);
         await db.SaveChangesAsync();
@@ -106,6 +109,25 @@ public class ExpensesService(HomeStackDbContext db, ICurrentUser me, TimeProvide
         await tx.CommitAsync();
 
         return (await GetReceiptAsync(receipt.Id)) with { AddedToInventory = added.Count };
+    }
+
+    /// <summary>
+    /// Remembers how much one of these is from what was put away: 1 × PACE SALSA put away as 2 L means one is 2 L.
+    /// Put away exactly as the receipt says (2.1 kg of chicken) means there's nothing to remember.
+    /// </summary>
+    internal static void RememberPack(TrackedItem item, SaveLineRequest line, AddItemRequest add)
+    {
+        var unit = Clean(add.Unit);
+        if (string.Equals(unit, Clean(line.Unit), StringComparison.OrdinalIgnoreCase) && Math.Abs(add.Quantity - line.Quantity) < 0.0005)
+        {
+            item.PackQuantity = null;
+            item.PackUnit = null;
+        }
+        else
+        {
+            item.PackQuantity = Math.Round(add.Quantity / line.Quantity, 3);
+            item.PackUnit = unit;
+        }
     }
 
     /// <summary>The tracked item a line belongs to: the one chosen, else the one with this store's item number, else a new one.</summary>
@@ -281,7 +303,7 @@ public class ExpensesService(HomeStackDbContext db, ICurrentUser me, TimeProvide
         var last = purchases.MaxBy(p => (p.Date, p.ReceiptId));
         return new TrackedItemDto(i.Id, i.Name, i.Category, i.ProductId,
             purchases.Count == 0 ? null : Rhythm(purchases.Select(p => p.Date), today), last?.EffectiveUnitPrice, last?.Store, codes,
-            i.SkipInventory);
+            i.SkipInventory, i.PackQuantity, i.PackUnit);
     }
 
     public async Task<TrackedItemDetailDto> GetItemAsync(int id)
@@ -306,6 +328,11 @@ public class ExpensesService(HomeStackDbContext db, ICurrentUser me, TimeProvide
         item.Name = req.Name.Trim();
         item.Category = req.Category;
         if (req.SkipInventory is bool skip) item.SkipInventory = skip;
+        if (req.UpdatePack)
+        {
+            item.PackQuantity = req.PackQuantity;
+            item.PackUnit = req.PackQuantity is null ? null : Clean(req.PackUnit);
+        }
         await db.SaveChangesAsync();
         return await GetItemAsync(id);
     }
@@ -329,6 +356,7 @@ public class ExpensesService(HomeStackDbContext db, ICurrentUser me, TimeProvide
         }
         into.ProductId ??= source.ProductId;
         into.SkipInventory = into.SkipInventory || source.SkipInventory;
+        if (into.PackQuantity is null) (into.PackQuantity, into.PackUnit) = (source.PackQuantity, source.PackUnit);
         db.Remove(source);
         await db.SaveChangesAsync();
         await tx.CommitAsync();

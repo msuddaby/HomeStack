@@ -199,6 +199,53 @@ public class ExpensesTests
     }
 
     [Fact]
+    public async Task Put_away_amounts_come_from_memory_then_the_printed_size_then_the_receipt()
+    {
+        using var app = new TestApp();
+        var c = await StartWithAi(app);
+        var pantry = (await (await c.GetAsync("/api/inventory/locations")).Read<List<LocationDto>>()).First(l => l.Kind == LocationKind.Pantry).Id;
+        async Task<List<DraftLineDto>> Scan(params object[] lines)
+        {
+            app.Ai.Bodies.Enqueue(OpenAiReply(new { store = "Costco", date = app.Today.ToString("yyyy-MM-dd"), total = 30, lines }));
+            return (await (await c.PostAsync("/api/expenses/read", Photo())).Read<ReceiptDraftDto>()).Lines;
+        }
+        object Salsa(int qty) => new { code = "777", raw = "777 PACE SALSA", name = "Pace salsa", quantity = qty, amount = 9.99 * qty,
+            category = "groceries", food = true, foodCategory = "condiments", location = "pantry" };
+
+        // The receipt just says PACE SALSA: nothing to go on but "1".
+        var first = (await Scan(Salsa(1),
+            new { raw = "OLIVE OIL 3L", name = "Olive oil 3 L", quantity = 2, amount = 30, category = "groceries", food = true, packQuantity = 3, packUnit = "L" },
+            new { raw = "CHKN BRST", name = "Chicken breasts", quantity = 2.1, unit = "kg", amount = 21, category = "groceries", food = true }));
+        Assert.Equal((1, null, PackSource.Receipt), (first[0].Food!.Quantity, first[0].Food!.Unit, first[0].Food!.AmountFrom));
+        Assert.Equal((6, "L", PackSource.Printed), (first[1].Food!.Quantity, first[1].Food!.Unit, first[1].Food!.AmountFrom)); // 2 × 3 L
+        Assert.Equal((2.1, "kg", PackSource.Receipt), (first[2].Food!.Quantity, first[2].Food!.Unit, first[2].Food!.AmountFrom));
+
+        // The user says one is 2 L; chicken goes away exactly as the receipt says.
+        object Away(string name, double q, string? unit) => new { product = new { name, category = "condiments" }, locationId = pantry, quantity = q, unit };
+        var saved = await (await c.Post("/api/expenses/receipts", Receipt("Costco", app.Today, 30.99m,
+            new { code = "777", name = "Pace salsa", category = "groceries", quantity = 1, amount = 9.99m, trackInventory = true, inventory = Away("Salsa", 2, "L") },
+            new { code = "888", name = "Chicken breasts", category = "groceries", quantity = 2.1, unit = "kg", amount = 21m, trackInventory = true, inventory = Away("Chicken breasts", 2.1, "kg") }))).Read<ReceiptDto>();
+        var salsaInventory = (await (await c.GetAsync("/api/inventory/items")).Read<List<ItemDto>>()).Single(i => i.Product.Name == "Salsa");
+        Assert.Equal((2, "L"), (salsaInventory.Quantity, salsaInventory.Unit));
+        var salsaItem = (await (await c.GetAsync($"/api/expenses/items/{saved.Lines[0].ItemId}")).Read<TrackedItemDetailDto>()).Item;
+        Assert.Equal((2, "L"), (salsaItem.PackQuantity, salsaItem.PackUnit));
+        Assert.Null((await (await c.GetAsync($"/api/expenses/items/{saved.Lines[1].ItemId}")).Read<TrackedItemDetailDto>()).Item.PackQuantity);
+
+        // Next time, two of them: 4 L, remembered.
+        var next = (await Scan(Salsa(2)))[0].Food!;
+        Assert.Equal((4, "L", PackSource.Remembered), (next.Quantity, next.Unit, next.AmountFrom));
+
+        // Changed on the item page: one is now 1.5 L; then forgotten.
+        var id = saved.Lines[0].ItemId!.Value;
+        await c.PutAsJsonAsync($"/api/expenses/items/{id}", new { name = "Pace salsa", category = "groceries", packQuantity = 1.5, packUnit = "L", updatePack = true }, TestApp.Json);
+        Assert.Equal(3, (await Scan(Salsa(2)))[0].Food!.Quantity);
+        var cleared = await (await c.PutAsJsonAsync($"/api/expenses/items/{id}",
+            new { name = "Pace salsa", category = "groceries", packQuantity = (double?)null, updatePack = true }, TestApp.Json)).Read<TrackedItemDetailDto>();
+        Assert.Null(cleared.Item.PackQuantity);
+        Assert.Equal(PackSource.Receipt, (await Scan(Salsa(1)))[0].Food!.AmountFrom);
+    }
+
+    [Fact]
     public async Task Duplicate_scan_is_flagged()
     {
         using var app = new TestApp();

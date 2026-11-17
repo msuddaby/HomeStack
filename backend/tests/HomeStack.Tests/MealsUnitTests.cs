@@ -45,11 +45,18 @@ public class UnitsTests
     [InlineData(3, null, "pc", 3)]
     [InlineData(1, "dozen", null, 12)]
     [InlineData(2, "can", "can", 2)]
+    [InlineData(12, "oz", "L", 0.3548)]  // recipe's 12 oz of salsa, kept in litres: fluid ounces
+    [InlineData(16, "oz", "lb", 1)]      // against a weight, oz stays a weight
     public void Converts_within_family(double amount, string? from, string? to, double expected) =>
         Assert.Equal(expected, Units.Convert(amount, from, to)!.Value, 2);
 
     [Fact]
-    public void Refuses_cross_family() => Assert.Null(Units.Convert(1, "cup", "g"));
+    public void Refuses_cross_family()
+    {
+        Assert.Null(Units.Convert(1, "cup", "g"));
+        Assert.Null(Units.Convert(1, "cup", "oz")); // a cup of pasta vs a 16 oz box needs a weight per cup
+        Assert.Null(Units.Convert(2, "bottle", "L"));
+    }
 }
 
 public class ProductMatcherTests

@@ -5,7 +5,13 @@ import type { AddItem, LocationKind, Product } from "@/modules/inventory/api";
 export interface ExpenseCategory { id: string; label: string; emoji: string }
 
 /** A tracked item next to a receipt line: "Tide Pods, last $27.99 at Costco". */
-export interface ItemRef { id: number; name: string; lastStore: string | null; lastUnitPrice: number | null; skipInventory: boolean }
+export interface ItemRef {
+  id: number; name: string; lastStore: string | null; lastUnitPrice: number | null; skipInventory: boolean;
+  /** How much one of these is ("2 L"), remembered from last time. */
+  packQuantity: number | null; packUnit: string | null;
+}
+/** Where a put-away amount came from: remembered on the item, a size printed on the receipt, or just the receipt quantity. */
+export type PackSource = "receipt" | "printed" | "remembered";
 
 export interface DraftLine {
   key: number; code: string | null; raw: string | null; name: string; category: string; quantity: number; unit: string | null;
@@ -14,8 +20,14 @@ export interface DraftLine {
   item: ItemRef | null;
   /** The AI thinks it's this item from another store; only linked if confirmed. */
   suggestion: ItemRef | null;
-  /** Food and drink, which can go into inventory. `add` is the starting tick: off if it was left out last time. */
-  food: { name: string; category: string; location: LocationKind; product: Product | null; add: boolean } | null;
+  /**
+   * Food and drink, which can go into inventory. `add` is the starting tick: off if it was left out last time.
+   * `quantity`/`unit` is how much to put away (e.g. 2 L for a line that just says PACE SALSA).
+   */
+  food: {
+    name: string; category: string; location: LocationKind; product: Product | null; add: boolean;
+    quantity: number; unit: string | null; amountFrom: PackSource;
+  } | null;
 }
 export interface ReceiptDraft {
   store: string | null; purchasedAt: string | null; subtotal: number | null; tax: number | null; total: number | null;
@@ -49,6 +61,8 @@ export interface TrackedItem {
   lastUnitPrice: number | null; lastStore: string | null; codes: string[];
   /** Food that isn't kept in inventory (a case of pop): the scanner starts it unticked. */
   skipInventory: boolean;
+  /** How much one of these is, for putting away ("2 L"). */
+  packQuantity: number | null; packUnit: string | null;
 }
 export interface StorePrice { store: string; lastUnitPrice: number | null; lowestUnitPrice: number | null; lastBought: string; purchases: number }
 export interface Purchase {
@@ -101,7 +115,11 @@ export const useAddReceiptPhotos = () =>
     return api<Receipt>(`/expenses/receipts/${id}/photos`, { body: form });
   });
 export const useUpdateItem = () =>
-  useExpensesMutation(({ id, ...v }: { id: number; name: string; category: string; skipInventory?: boolean }) =>
+  useExpensesMutation(({ id, ...v }: {
+    id: number; name: string; category: string; skipInventory?: boolean;
+    /** With updatePack: how much one is; null forgets it. */
+    packQuantity?: number | null; packUnit?: string | null; updatePack?: boolean;
+  }) =>
     api<TrackedItemDetail>(`/expenses/items/${id}`, { method: "PUT", body: v }));
 export const useMergeItem = () =>
   useExpensesMutation(({ id, intoItemId }: { id: number; intoItemId: number }) =>

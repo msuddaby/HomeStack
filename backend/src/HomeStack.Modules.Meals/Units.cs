@@ -47,13 +47,19 @@ public static class Units
         return Aliases.TryGetValue(u, out var c) ? c : null;
     }
 
-    /// <summary>Convert an amount between units of the same family. Null/empty units count as pieces.</summary>
+    /// <summary>
+    /// Convert an amount between units of the same family. Null/empty units count as pieces.
+    /// An "oz" being converted <i>from</i> into a volume counts as fluid ounces: a recipe's "12 oz salsa" with the salsa
+    /// kept in litres means 12 fl oz (close enough for sauces and drinks). Only that way round: "oz" on a package in
+    /// inventory (a 16 oz box of pasta) is a weight, so converting cups into it is refused.
+    /// </summary>
     public static double? Convert(double amount, string? from, string? to)
     {
         var f = Normalize(from) ?? (string.IsNullOrWhiteSpace(from) ? "pc" : null);
         var t = Normalize(to) ?? (string.IsNullOrWhiteSpace(to) ? "pc" : null);
         if (f is null || t is null)
             return string.Equals(from?.Trim(), to?.Trim(), StringComparison.OrdinalIgnoreCase) ? amount : null;
+        if (f == "oz" && Canonical[t].Family == Family.Volume) f = "fl oz";
         var (ff, fb) = Canonical[f];
         var (tf, tb) = Canonical[t];
         return ff == tf ? amount * fb / tb : null;

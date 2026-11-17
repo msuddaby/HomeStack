@@ -8,12 +8,18 @@ import { useToast } from "@/core/toast";
 import { Button, Chip, cx, ErrorText, Field, Input, PhotoButton, Select, Sheet, Spinner } from "@/core/ui";
 import { useCategories, useLocations, type AddItem, type Category, type Location, type Product } from "@/modules/inventory/api";
 import { suggestExpiry } from "@/modules/inventory/logic";
-import { readReceipt, useAddReceiptPhotos, useExpenseCategories, useSaveReceipt, type DraftLine, type ItemRef, type ReceiptDraft } from "./api";
+import { readReceipt, useAddReceiptPhotos, useExpenseCategories, useSaveReceipt, type DraftLine, type ItemRef, type PackSource, type ReceiptDraft } from "./api";
 import { money } from "./format";
 
-interface FoodRow { add: boolean; name: string; category: string; locationId: number; expiresAt: string; expiryTouched: boolean; product: Product | null }
+interface FoodRow {
+  add: boolean; name: string; category: string; locationId: number; expiresAt: string; expiryTouched: boolean; product: Product | null;
+  /** "Put away as": how much goes into inventory. Follows the line's quantity (× perOne) until edited. */
+  qty: string; unit: string; qtyTouched: boolean; perOne: number; from: PackSource;
+}
 interface Row {
   key: number; include: boolean; name: string; category: string; amount: string; source: DraftLine;
+  /** As bought on the receipt (2 jars, 2.1 kg): used for the price of one. */
+  quantity: string; unit: string;
   /** Linked item: the automatic one, or a suggestion the user said yes to. */
   itemId: number | null;
   /** null = not answered yet (not linked). */
@@ -21,7 +27,8 @@ interface Row {
   food: FoodRow | null;
 }
 
-const num = (s: string) => { const n = Number(s.replace(/[$,\s]/g, "")); return Number.isFinite(n) ? n : null; };
+const num = (s: string) => { const n = Number(s.replace(/[$,\s]/g, "")); return s.trim() !== "" && Number.isFinite(n) ? n : null; };
+const round3 = (n: number) => String(Math.round(n * 1000) / 1000);
 
 /**
  * Receipt photos → AI → review every line (price, item number, discount; food can go straight into inventory) → save.
@@ -89,17 +96,24 @@ export function ScanReceiptSheet({ open, onClose, onBack }: { open: boolean; onC
       setTotal(d.total?.toFixed(2) ?? "");
       setTax(d.tax?.toFixed(2) ?? "");
       setRows(d.lines.map((l) => {
-        const food = l.food && (() => {
+        const food = l.food && ((): FoodRow => {
           const base = { category: l.food.category, locationId: locFor(l.food.location)?.id ?? 0, product: l.food.product };
-          return { add: l.food.add, name: l.food.name, expiresAt: expiryFor(base, bought), expiryTouched: false, ...base };
+          return { add: l.food.add, name: l.food.name, expiresAt: expiryFor(base, bought), expiryTouched: false, ...base, ...draftAmount(l) };
         })();
         return { key: l.key, include: true, name: l.name, category: l.category, amount: l.amount.toFixed(2), source: l,
-          itemId: l.item?.id ?? null, suggestionAccepted: null, food };
+          quantity: round3(l.quantity), unit: l.unit ?? "", itemId: l.item?.id ?? null, suggestionAccepted: null, food };
       }));
     } catch (e) { setError(e); } finally { setReading(false); }
   }
 
   const update = (key: number, patch: Partial<Row>) => setRows((rs) => rs.map((r) => (r.key === key ? { ...r, ...patch } : r)));
+  // Buying 2 instead of 1: the put-away amount doubles too, unless it was typed in.
+  const updateQuantity = (key: number, quantity: string) => setRows((rs) => rs.map((r) => {
+    if (r.key !== key) return r;
+    const q = num(quantity);
+    const food = r.food && !r.food.qtyTouched && q != null && q > 0 ? { ...r.food, qty: round3(q * r.food.perOne) } : r.food;
+    return { ...r, quantity, food };
+  }));
   const updateFood = (key: number, patch: Partial<FoodRow>) => setRows((rs) => rs.map((r) => {
     if (r.key !== key || !r.food) return r;
     const food = { ...r.food, ...patch };
@@ -123,14 +137,18 @@ export function ScanReceiptSheet({ open, onClose, onBack }: { open: boolean; onC
     const lines = included.map((r) => {
       const s = r.source;
       const f = r.food;
+      const quantity = num(r.quantity) ?? s.quantity;
+      const unit = r.unit.trim() || null;
+      const putAway = (f && num(f.qty)) || quantity;
+      const putAwayUnit = f ? f.unit.trim() || null : unit;
       const inventory: AddItem | null = f?.add && f.name.trim() && f.locationId ? {
         ...(f.product && f.product.name.toLowerCase() === f.name.trim().toLowerCase() && f.product.category === f.category
-          ? { productId: f.product.id } : { product: { name: f.name.trim(), category: f.category, defaultUnit: s.unit } }),
-        locationId: f.locationId, quantity: s.quantity, unit: s.unit, purchasedAt: date || null, expiresAt: f.expiresAt || null,
+          ? { productId: f.product.id } : { product: { name: f.name.trim(), category: f.category, defaultUnit: putAwayUnit } }),
+        locationId: f.locationId, quantity: putAway, unit: putAwayUnit, purchasedAt: date || null, expiresAt: f.expiresAt || null,
       } : null;
       return {
         itemId: r.suggestionAccepted ? r.source.suggestion!.id : r.itemId, code: s.code, name: r.name.trim(), raw: s.raw,
-        category: r.category, quantity: s.quantity, unit: s.unit, unitPrice: s.unitPrice, amount: num(r.amount)!, discount: s.discount, inventory,
+        category: r.category, quantity, unit, unitPrice: s.unitPrice, amount: num(r.amount)!, discount: s.discount, inventory,
         trackInventory: f ? f.add : null,
       };
     });
@@ -205,7 +223,7 @@ export function ScanReceiptSheet({ open, onClose, onBack }: { open: boolean; onC
           <ul className="flex flex-col gap-2">
             {rows.map((r) => (
               <LineRow key={r.key} r={r} expenseCats={expenseCats} foodCats={foodCats} locations={locations}
-                update={(p) => update(r.key, p)} updateFood={(p) => updateFood(r.key, p)} />
+                update={(p) => update(r.key, p)} updateFood={(p) => updateFood(r.key, p)} updateQuantity={(q) => updateQuantity(r.key, q)} />
             ))}
           </ul>
           <p className="text-xs text-muted">Check names, prices and places. AI can misread receipts. Untick a line to leave it out.</p>
@@ -251,11 +269,24 @@ export function ScanReceiptSheet({ open, onClose, onBack }: { open: boolean; onC
   );
 }
 
-function LineRow({ r, expenseCats, foodCats, locations, update, updateFood }: {
+function LineRow({ r, expenseCats, foodCats, locations, update, updateFood, updateQuantity }: {
   r: Row; expenseCats: { id: string; label: string; emoji: string }[]; foodCats: Category[]; locations: Location[];
-  update: (p: Partial<Row>) => void; updateFood: (p: Partial<FoodRow>) => void;
+  update: (p: Partial<Row>) => void; updateFood: (p: Partial<FoodRow>) => void; updateQuantity: (q: string) => void;
 }) {
   const s = r.source;
+  const lineQty = num(r.quantity) ?? s.quantity;
+  // Saying yes to "same as X" takes on X's remembered size and inventory choice; no goes back to what the receipt said.
+  const answer = (yes: boolean) => {
+    update({ suggestionAccepted: yes });
+    if (!r.food || !s.food) return;
+    const pack = yes && s.suggestion!.packQuantity != null
+      ? { perOne: s.suggestion!.packQuantity, unit: s.suggestion!.packUnit ?? "", from: "remembered" as const }
+      : draftAmount(s);
+    updateFood({
+      add: yes ? !s.suggestion!.skipInventory : s.food.add,
+      ...(r.food.qtyTouched ? {} : { perOne: pack.perOne, unit: pack.unit, from: pack.from, qty: round3(lineQty * pack.perOne) }),
+    });
+  };
   return (
     <li className={cx("rounded-2xl border border-border p-3", !r.include && "opacity-50")}>
       <div className="flex items-center gap-2">
@@ -270,7 +301,11 @@ function LineRow({ r, expenseCats, foodCats, locations, update, updateFood }: {
             <Select value={r.category} onChange={(e) => update({ category: e.target.value })} className="min-h-8 w-auto py-0 text-xs" aria-label="Spending category">
               {expenseCats.map((c) => <option key={c.id} value={c.id}>{c.emoji} {c.label}</option>)}
             </Select>
-            {s.quantity !== 1 && <span>×{s.quantity}{s.unit ? ` ${s.unit}` : ""}</span>}
+            <span className="flex items-center gap-1">
+              Qty
+              <Input inputMode="decimal" value={r.quantity} onChange={(e) => updateQuantity(e.target.value)} className="min-h-8 w-14 px-2 text-xs" aria-label="Quantity bought" />
+              <Input value={r.unit} onChange={(e) => update({ unit: e.target.value })} placeholder="unit" className="min-h-8 w-14 px-2 text-xs" aria-label="Unit bought" />
+            </span>
             {s.discount != null && <Chip tone="accent">−{money(s.discount)} off</Chip>}
             {s.code && <span className="font-mono">#{s.code}</span>}
           </div>
@@ -279,11 +314,10 @@ function LineRow({ r, expenseCats, foodCats, locations, update, updateFood }: {
           ) : s.suggestion && (
             <div className="mt-1.5 flex flex-wrap items-center gap-2 rounded-xl bg-surface-2 px-2 py-1.5 text-xs">
               <span className="min-w-0 flex-1">Same as <b>{s.suggestion.name}</b>{s.suggestion.lastStore ? ` (${s.suggestion.lastStore}${s.suggestion.lastUnitPrice != null ? `, ${money(s.suggestion.lastUnitPrice)}` : ""})` : ""}?</span>
-              {/* Linking to the item also takes on its "keep in inventory?" choice; saying no goes back to the AI's start. */}
               <Button type="button" variant={r.suggestionAccepted === true ? "primary" : "secondary"} className="min-h-8 px-3 text-xs"
-                onClick={() => { update({ suggestionAccepted: true }); if (r.food) updateFood({ add: !s.suggestion!.skipInventory }); }}>Yes</Button>
+                onClick={() => answer(true)}>Yes</Button>
               <Button type="button" variant={r.suggestionAccepted === false ? "primary" : "secondary"} className="min-h-8 px-3 text-xs"
-                onClick={() => { update({ suggestionAccepted: false }); if (r.food && s.food) updateFood({ add: s.food.add }); }}>No</Button>
+                onClick={() => answer(false)}>No</Button>
             </div>
           )}
           {r.food && (
@@ -298,6 +332,14 @@ function LineRow({ r, expenseCats, foodCats, locations, update, updateFood }: {
               {r.food.add && (
                 <div className="mt-2 grid grid-cols-2 gap-2">
                   <Input value={r.food.name} onChange={(e) => updateFood({ name: e.target.value })} className="col-span-2 min-h-9" aria-label="Inventory name" />
+                  <div className="col-span-2 flex items-center gap-2 text-xs">
+                    <span className="shrink-0 text-muted">Put away as</span>
+                    <Input inputMode="decimal" value={r.food.qty} onChange={(e) => updateFood({ qty: e.target.value, qtyTouched: true })}
+                      className="min-h-9 w-20" aria-label="Amount to put away" />
+                    <Input value={r.food.unit} onChange={(e) => updateFood({ unit: e.target.value, qtyTouched: true })} placeholder="L, kg, pc…"
+                      className="min-h-9 w-20" aria-label="Unit to put away" />
+                  </div>
+                  <p className="col-span-2 -mt-1 text-[11px] text-muted">{amountHint(r.food, lineQty)}</p>
                   <Select value={r.food.locationId} onChange={(e) => updateFood({ locationId: Number(e.target.value) })} className="min-h-9" aria-label="Where">
                     {locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
                   </Select>
@@ -315,6 +357,20 @@ function LineRow({ r, expenseCats, foodCats, locations, update, updateFood }: {
       )}
     </li>
   );
+}
+
+/** The put-away amount the reader suggested, as "per one bought" so it can follow the quantity. */
+function draftAmount(l: DraftLine): Pick<FoodRow, "qty" | "unit" | "qtyTouched" | "perOne" | "from"> {
+  const f = l.food!;
+  return { qty: round3(f.quantity), unit: f.unit ?? "", qtyTouched: false, perOne: l.quantity > 0 ? f.quantity / l.quantity : f.quantity, from: f.amountFrom };
+}
+
+function amountHint(f: FoodRow, lineQty: number) {
+  const per = f.unit ? `${round3(f.perOne)} ${f.unit}` : null;
+  if (f.qtyTouched) return "Remembered for next time as how much one of these is.";
+  if (f.from === "remembered") return `One is ${per ?? round3(f.perOne)}, from last time. Change it if this one's different.`;
+  if (f.from === "printed") return `Size from the receipt${lineQty !== 1 && per ? ` (${per} each)` : ""}.`;
+  return "No size on the receipt. Enter how much it holds (e.g. 2 L) and it's remembered.";
 }
 
 function boughtBefore(i: ItemRef) {

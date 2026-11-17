@@ -36,6 +36,7 @@ public class ExpensesModule : IModule
             e.ToTable("expenses_items");
             e.Property(x => x.Name).HasMaxLength(120);
             e.Property(x => x.Category).HasMaxLength(32);
+            e.Property(x => x.PackUnit).HasMaxLength(20);
             e.HasIndex(x => new { x.HouseholdId, x.Name });
         });
         mb.Entity<ItemCode>(e =>

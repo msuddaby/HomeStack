@@ -29,6 +29,12 @@ public class TrackedItem
     /// unticking "Put away" remembers it, ticking it again clears it.
     /// </summary>
     public bool SkipInventory { get; set; }
+    /// <summary>
+    /// How much one of these is, for putting away ("PACE SALSA" = 2 L), when the receipt doesn't say.
+    /// Learned from what was put away last time; editable on the item.
+    /// </summary>
+    public double? PackQuantity { get; set; }
+    public string? PackUnit { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
 

@@ -41,6 +41,12 @@ export function ItemPage() {
           )}
           <div><dt className="text-xs text-muted">Bought</dt><dd>{d.purchases.length} {d.purchases.length === 1 ? "time" : "times"}</dd></div>
           <div><dt className="text-xs text-muted">Spent in total</dt><dd className="tabular-nums">{money(d.totalSpent)}</dd></div>
+          {d.item.packQuantity != null && (
+            <div className="col-span-2">
+              <dt className="text-xs text-muted">One of these is</dt>
+              <dd>{d.item.packQuantity}{d.item.packUnit ? ` ${d.item.packUnit}` : ""} <span className="text-xs text-muted">(put away like this when scanned)</span></dd>
+            </div>
+          )}
         </dl>
       </Card>
 
@@ -90,16 +96,23 @@ export function ItemPage() {
 function EditSheet({ item, open, onClose }: { item: TrackedItem; open: boolean; onClose: () => void }) {
   const categories = useExpenseCategories().data ?? [];
   const update = useUpdateItem();
-  const initial = () => ({ name: item.name, category: item.category, skipInventory: item.skipInventory });
+  const initial = () => ({
+    name: item.name, category: item.category, skipInventory: item.skipInventory,
+    packQuantity: item.packQuantity?.toString() ?? "", packUnit: item.packUnit ?? "",
+  });
   const [f, setF] = useState(initial);
   useEffect(() => { if (open) setF(initial()); }, [open, item]); // eslint-disable-line react-hooks/exhaustive-deps
   // Only food has an inventory choice to make.
-  const food = item.productId != null || item.skipInventory || ["groceries", "snacks", "alcohol"].includes(f.category);
+  const food = item.productId != null || item.skipInventory || item.packQuantity != null || ["groceries", "snacks", "alcohol"].includes(f.category);
+  const pack = f.packQuantity.trim() === "" ? null : Number(f.packQuantity);
   return (
     <Sheet open={open} onClose={onClose} title="Edit item">
       <form className="flex flex-col gap-3" onSubmit={async (e) => {
         e.preventDefault();
-        await update.mutateAsync({ id: item.id, name: f.name, category: f.category, skipInventory: food ? f.skipInventory : undefined });
+        await update.mutateAsync({
+          id: item.id, name: f.name, category: f.category,
+          ...(food ? { skipInventory: f.skipInventory, packQuantity: pack, packUnit: f.packUnit.trim() || null, updatePack: true } : {}),
+        });
         onClose();
       }}>
         <Field label="Name"><Input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} required /></Field>
@@ -117,6 +130,14 @@ function EditSheet({ item, open, onClose }: { item: TrackedItem; open: boolean; 
               <span className="block text-xs text-muted">Untick for things like snacks and pop you just want to track spending on.</span>
             </span>
           </label>
+        )}
+        {food && !f.skipInventory && (
+          <Field label="One of these is" hint="How much goes into inventory per one bought, e.g. 2 L for a two-bottle pack. Leave blank to use the receipt's quantity.">
+            <div className="flex gap-2">
+              <Input inputMode="decimal" value={f.packQuantity} onChange={(e) => setF({ ...f, packQuantity: e.target.value })} placeholder="2" className="w-24" />
+              <Input value={f.packUnit} onChange={(e) => setF({ ...f, packUnit: e.target.value })} placeholder="L, kg, pc…" className="w-28" />
+            </div>
+          </Field>
         )}
         {update.error && <ErrorText error={update.error} />}
         <Button variant="primary" busy={update.isPending}>Save</Button>

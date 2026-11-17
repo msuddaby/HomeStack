@@ -7,13 +7,19 @@ namespace HomeStack.Modules.Expenses;
 // ---------- Reading a receipt (suggestion for review; nothing is saved) ----------
 
 /// <summary>A tracked item, as shown next to a receipt line: "Tide Pods, last $27.99 at Costco".</summary>
-public record ItemRefDto(int Id, string Name, string? LastStore, decimal? LastUnitPrice, bool SkipInventory);
+public record ItemRefDto(int Id, string Name, string? LastStore, decimal? LastUnitPrice, bool SkipInventory,
+    double? PackQuantity = null, string? PackUnit = null);
 
 /// <summary>
 /// What a food line would add to inventory. <see cref="Add"/> is the starting tick: off when the household
-/// left this item out of inventory last time.
+/// left this item out of inventory last time. <see cref="Quantity"/>/<see cref="Unit"/> is how much to put away
+/// ("2 L" for a line that just says PACE SALSA); <see cref="AmountFrom"/> says where that came from.
 /// </summary>
-public record DraftFoodDto(string Name, string Category, LocationKind Location, ProductDto? Product, bool Add);
+public record DraftFoodDto(string Name, string Category, LocationKind Location, ProductDto? Product, bool Add,
+    double Quantity, string? Unit, PackSource AmountFrom);
+
+/// <summary>Where a put-away amount came from: remembered on the item, a size printed on the receipt, or just the receipt quantity.</summary>
+public enum PackSource { Receipt, Printed, Remembered }
 
 public record DraftLineDto(
     int Key, string? Code, string? Raw, string Name, string Category, double Quantity, string? Unit,
@@ -119,7 +125,7 @@ public record StorePriceDto(string Store, decimal? LastUnitPrice, decimal? Lowes
 
 public record TrackedItemDto(
     int Id, string Name, string Category, int? ProductId, RhythmDto? Rhythm, decimal? LastUnitPrice, string? LastStore,
-    List<string> Codes, bool SkipInventory);
+    List<string> Codes, bool SkipInventory, double? PackQuantity, string? PackUnit);
 
 public record PurchaseDto(int ReceiptId, DateOnly Date, string? Store, double Quantity, string? Unit, decimal? UnitPrice, decimal Amount, decimal? Discount);
 
@@ -129,7 +135,11 @@ public record UpdateItemRequest(
     [Required, StringLength(120, MinimumLength = 1)] string Name,
     [Required] string Category,
     // Null leaves it as it is.
-    bool? SkipInventory = null) : IValidatable
+    bool? SkipInventory = null,
+    // With UpdatePack: how much one of these is ("2", "L"); null quantity forgets it.
+    [Range(0.001, 100000)] double? PackQuantity = null,
+    [StringLength(20)] string? PackUnit = null,
+    bool UpdatePack = false) : IValidatable
 {
     public IEnumerable<ValidationResult> Validate()
     {

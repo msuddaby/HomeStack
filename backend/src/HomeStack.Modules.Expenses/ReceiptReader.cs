@@ -19,7 +19,8 @@ public partial class ReceiptReader(AiService ai, ExpensesService expenses, Inven
     // Shape the model fills in; everything is optional and checked afterwards.
     private record Reply(string? Store, string? Date, decimal? Subtotal, decimal? Tax, decimal? Total, List<ReplyLine>? Lines, string? Note);
     private record ReplyLine(string? Code, string? Raw, string? Name, double? Quantity, string? Unit, decimal? UnitPrice, decimal? Amount,
-        decimal? Discount, string? Category, bool? Food, string? FoodCategory, string? Location, int? SameAs);
+        decimal? Discount, string? Category, bool? Food, string? FoodCategory, string? Location, int? SameAs,
+        double? PackQuantity, string? PackUnit);
 
     public async Task<ReceiptDraftDto> ReadAsync(IReadOnlyList<AiImage> images, CancellationToken ct)
     {
@@ -38,7 +39,8 @@ public partial class ReceiptReader(AiService ai, ExpensesService expenses, Inven
         {"store": "Costco", "date": "YYYY-MM-DD", "subtotal": 151.23, "tax": 4.10, "total": 155.33,
          "lines": [{"code": "1234567", "raw": "1234567 KS DETERGENT 4.5L 18.99", "name": "Kirkland laundry detergent 4.5 L",
                     "quantity": 1, "unit": null, "unitPrice": 18.99, "amount": 15.99, "discount": 3.00,
-                    "category": "household", "food": false, "foodCategory": null, "location": null, "sameAs": null}],
+                    "category": "household", "food": false, "foodCategory": null, "location": null, "sameAs": null,
+                    "packQuantity": null, "packUnit": null}],
          "note": null}
         """;
 
@@ -70,6 +72,9 @@ public partial class ReceiptReader(AiService ai, ExpensesService expenses, Inven
               other treats are "snacks", not "groceries"; groceries are ingredients and everyday meals.
             - "food": true for food and drink that gets put away at home, else false. When true, also give
               "foodCategory" (one food category id below) and "location" ("fridge", "freezer" or "pantry").
+            - "packQuantity"/"packUnit": the total amount in ONE of this line, only when the line itself prints it
+              ("SALSA 2X1L" -> 2, "L"; "OLIVE OIL 3L" -> 3, "L"; "RICE 10KG" -> 10, "kg"; "EGGS 24CT" -> 24, null).
+              Units: g, kg, ml, L, oz, lb. null when no size is printed. Don't guess from what the product usually is.
             - "sameAs": the id of a known item (list below) when this line is clearly the same product bought at another
               store: same brand, variety and size. Otherwise null. Don't guess.
             - "store": the store's short name ("Costco", "Walmart", "Superstore"). "tax": all tax lines added up.
@@ -130,7 +135,11 @@ public partial class ReceiptReader(AiService ai, ExpensesService expenses, Inven
                 var foodCategory = product?.Category ?? (r.FoodCategory is { } fc && Categories.Exists(fc) ? fc : Categories.Guess(name));
                 var location = Enum.TryParse<LocationKind>(r.Location, ignoreCase: true, out var l) && l != LocationKind.Other
                     ? l : Categories.Get(foodCategory).DefaultLocation;
-                food = new DraftFoodDto(product?.Name ?? name, foodCategory, location, product, Add: true);
+                // A size printed on the line ("SALSA 2X1L"), else just what the receipt says (1, or 2.1 kg).
+                food = r.PackQuantity is > 0 and <= 100000 && Clean(r.PackUnit, 20) is var pu
+                    ? new DraftFoodDto(product?.Name ?? name, foodCategory, location, product, true,
+                        Math.Round(quantity * r.PackQuantity.Value, 3), pu, PackSource.Printed)
+                    : new DraftFoodDto(product?.Name ?? name, foodCategory, location, product, true, quantity, Clean(r.Unit, 20), PackSource.Receipt);
             }
             lines.Add((lines.Count, code, Clean(r.Raw, 200), name, category, quantity, Clean(r.Unit, 20), unitPrice, amount.Value,
                 Money(r.Discount) is > 0 and var d ? d : null, itemId, suggestion, food));
@@ -141,11 +150,14 @@ public partial class ReceiptReader(AiService ai, ExpensesService expenses, Inven
         var draftLines = lines.Select(l =>
         {
             var item = l.ItemId is int i ? refs.GetValueOrDefault(i) : null;
+            var food = l.Food is { } f
+                ? f with { Add = item?.SkipInventory != true } // left out of inventory last time (a case of pop): start unticked
+                : null;
+            // What one of these was last time beats anything on the receipt: the household entered it.
+            if (food is not null && item?.PackQuantity is double pack)
+                food = food with { Quantity = Math.Round(l.Quantity * pack, 3), Unit = item.PackUnit, AmountFrom = PackSource.Remembered };
             return new DraftLineDto(l.Key, l.Code, l.Raw, l.Name, l.Category, l.Quantity, l.Unit, l.UnitPrice, l.Amount, l.Discount,
-                item,
-                l.SuggestionId is int s ? refs.GetValueOrDefault(s) : null,
-                // Left out of inventory last time (a case of pop, say): start unticked.
-                l.Food is { } f ? f with { Add = item?.SkipInventory != true } : null);
+                item, l.SuggestionId is int s ? refs.GetValueOrDefault(s) : null, food);
         }).ToList();
 
         DateOnly? date = DateOnly.TryParse(reply.Date, out var dt) && dt <= today && dt >= today.AddYears(-2) ? dt : null;
