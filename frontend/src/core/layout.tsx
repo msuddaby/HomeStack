@@ -1,7 +1,8 @@
-import { NavLink, Outlet } from "react-router";
+import { NavLink, Outlet, useLocation } from "react-router";
 import { Home, Settings } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { modules } from "@/modules";
+import { ModulesContext } from "./modules";
 import { ToastProvider } from "./toast";
 import { cx } from "./ui";
 import { haptic } from "./motion";
@@ -11,11 +12,13 @@ interface NavItem { to: string; label: string; icon: LucideIcon; end?: boolean }
 const nav: NavItem[] = [
   { to: "/", label: "Home", icon: Home, end: true },
   ...modules.map((m) => ({ to: `/${m.path}`, label: m.name, icon: m.icon })),
-  { to: "/settings", label: "Settings", icon: Settings },
 ];
+// Phones get five tabs; Settings is the gear on Home. The desktop sidebar has room for it.
+const sideNav: NavItem[] = [...nav, { to: "/settings", label: "Settings", icon: Settings }];
 
 export function Layout() {
   return (
+    <ModulesContext.Provider value={modules}>
     <ToastProvider>
     <div className="min-h-dvh md:flex">
       {/* Desktop sidebar */}
@@ -24,7 +27,7 @@ export function Layout() {
           <img src="/icon.svg" alt="" className="size-8" />
           <span className="text-lg font-bold">HomeStack</span>
         </div>
-        {nav.map((n) => (
+        {sideNav.map((n) => (
           <NavLink key={n.to} to={n.to} end={n.end} viewTransition
             className={({ isActive }) => cx("press flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium",
               isActive ? "bg-accent-soft text-accent" : "text-muted hover:bg-surface-2 hover:text-text")}>
@@ -59,17 +62,51 @@ export function Layout() {
       </nav>
     </div>
     </ToastProvider>
+    </ModulesContext.Provider>
   );
 }
 
+/**
+ * The one page layout: a title, then (optionally) a row of tabs. Every section uses it, so pages look and work
+ * the same everywhere. `action` is the page's main button.
+ */
 export function PageHeader({ title, subtitle, action }: { title: string; subtitle?: string; action?: React.ReactNode }) {
   return (
-    <header className="mb-4 flex items-end justify-between gap-3">
+    <header className="mb-3 flex items-end justify-between gap-3">
       <div className="min-w-0">
         <h1 className="truncate text-2xl font-bold">{title}</h1>
         {subtitle && <p className="text-sm text-muted">{subtitle}</p>}
       </div>
       {action}
     </header>
+  );
+}
+
+export interface Tab { to: string; label: string; end?: boolean }
+
+/** Tabs under a section's title (Plan · Recipes, Overview · Receipts…). Scrolls sideways if they don't fit. */
+export function TabNav({ tabs }: { tabs: Tab[] }) {
+  return (
+    <nav className="-mx-4 mb-4 flex gap-1 overflow-x-auto border-b border-border px-4">
+      {tabs.map((t) => (
+        <NavLink key={t.to} to={t.to} end={t.end}
+          className={({ isActive }) => cx("press shrink-0 border-b-2 px-3 py-2.5 text-sm font-medium transition-colors duration-200",
+            isActive ? "border-accent text-accent" : "border-transparent text-muted hover:text-text")}>
+          {t.label}
+        </NavLink>
+      ))}
+    </nav>
+  );
+}
+
+/** A section's tabs and the page under them; the page fades in when you switch tabs. */
+export function TabbedSection({ title, action, tabs }: { title: string; action?: React.ReactNode; tabs: Tab[] }) {
+  const { pathname } = useLocation();
+  return (
+    <>
+      <PageHeader title={title} action={action} />
+      <TabNav tabs={tabs} />
+      <div key={pathname} className="animate-fade-in"><Outlet /></div>
+    </>
   );
 }

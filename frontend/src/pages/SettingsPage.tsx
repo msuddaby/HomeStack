@@ -19,33 +19,48 @@ export function SettingsPage() {
     <>
       <PageHeader title="Settings" subtitle={me.data?.household.name} />
       <div className="flex flex-col gap-4">
+        <Group title="You">
+          <Card title="Account">
+            <p className="mb-3 text-sm text-muted">Signed in as <b className="text-text">{me.data?.user.username}</b></p>
+            <div className="flex flex-wrap gap-2">
+              <Button onClick={() => setChangingPassword(true)}><KeyRound className="size-4" />Change password</Button>
+              <Button onClick={() => logout.mutate()} busy={logout.isPending}><LogOut className="size-4" />Sign out</Button>
+            </div>
+          </Card>
+          <NotificationsCard />
+        </Group>
+        <Group title="Household">
+          <HouseholdMembers />
+          <AiCard />
+          {modules.map((m) => m.Settings && <m.Settings key={m.id} />)}
+        </Group>
+        {/* Only the instance admin: these cover every household on the server. */}
         {me.data?.isInstanceAdmin && (
-          <Link to="/admin" className="flex items-center gap-3 rounded-2xl border border-border bg-surface p-4">
-            <Server className="size-5 text-accent" />
-            <span className="min-w-0 flex-1">
-              <span className="block text-sm font-medium">Manage HomeStack</span>
-              <span className="block text-xs text-muted">Households on this server, invites, shared AI</span>
-            </span>
-            <ChevronRight className="size-4 text-muted" />
-          </Link>
+          <Group title="This server">
+            <Link to="/admin" className="flex items-center gap-3 rounded-2xl border border-border bg-surface p-4">
+              <Server className="size-5 text-accent" />
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-medium">Manage HomeStack</span>
+                <span className="block text-xs text-muted">Households on this server, invites, shared AI</span>
+              </span>
+              <ChevronRight className="size-4 text-muted" />
+            </Link>
+            <BackupsCard />
+          </Group>
         )}
-        <HouseholdMembers />
-        <AiCard />
-        <NotificationsCard />
-        {modules.map((m) => m.Settings && <m.Settings key={m.id} />)}
-        {/* Backups hold every household on the server. */}
-        {me.data?.isInstanceAdmin && <BackupsCard />}
-        <Card title="Account">
-          <p className="mb-3 text-sm text-muted">Signed in as <b className="text-text">{me.data?.user.username}</b></p>
-          <div className="flex flex-wrap gap-2">
-            <Button onClick={() => setChangingPassword(true)}><KeyRound className="size-4" />Change password</Button>
-            <Button onClick={() => logout.mutate()} busy={logout.isPending}><LogOut className="size-4" />Sign out</Button>
-          </div>
-        </Card>
         <ChangePasswordSheet open={changingPassword} onClose={() => setChangingPassword(false)} />
         <p className="text-center text-xs text-muted">Version built {new Date(__BUILD_TIME__).toLocaleString()}</p>
       </div>
     </>
+  );
+}
+
+function Group({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section className="flex flex-col gap-3">
+      <h2 className="mt-2 text-xs font-semibold uppercase tracking-wide text-muted">{title}</h2>
+      {children}
+    </section>
   );
 }
 
@@ -65,7 +80,7 @@ function HouseholdMembers() {
     mutationFn: (id: number) => api(`/household/users/${id}`, { method: "DELETE" }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["household-users"] }); setRemoving(null); },
   });
-  // Admins can make others admin (they mark split payments as received in Spending).
+  // Admins can make others admin (they mark split payments as received in Money).
   const setAdmin = useMutation({
     mutationFn: ({ id, isAdmin }: { id: number; isAdmin: boolean }) => api<UserDto>(`/household/users/${id}/admin`, { method: "PUT", body: { isAdmin } }),
     onSuccess: () => Promise.all([qc.invalidateQueries({ queryKey: ["household-users"] }), qc.invalidateQueries({ queryKey: ["me"] })]),

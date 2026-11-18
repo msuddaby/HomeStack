@@ -55,7 +55,7 @@ export function OverviewPage() {
 
       {s.total === 0 ? (
         <Empty title={thisMonth ? "Nothing spent yet this month" : "Nothing recorded this month"}>
-          Scan a receipt, or add an expense with the + button.
+          Tap Add to scan a receipt or enter an expense.
         </Empty>
       ) : (
         <>
@@ -66,7 +66,7 @@ export function OverviewPage() {
 
       {thisMonth && <DueList />}
 
-      <Card title="Recent" action={<Link to="/expenses/receipts" className="text-xs text-accent">All receipts →</Link>}>
+      <Card title="Recent" action={<Link to="/expenses/receipts" className="text-xs text-accent">All history →</Link>}>
         <ReceiptList limit={5} />
       </Card>
     </div>

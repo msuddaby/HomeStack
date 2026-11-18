@@ -3,7 +3,7 @@ import { Link, useNavigate } from "react-router";
 import { Camera, Check, FileText, ImagePlus, Link2, Sparkles, X } from "lucide-react";
 import { shrinkImage, useAiSettings } from "@/core/ai";
 import { errorMessage } from "@/core/api";
-import { todayISO } from "@/core/dates";
+import { parseISO, todayISO } from "@/core/dates";
 import { useToast } from "@/core/toast";
 import { Button, Chip, cx, ErrorText, Field, Input, PhotoButton, Select, Sheet, Spinner } from "@/core/ui";
 import { useCategories, useLocations, type AddItem, type Category, type Location, type Product } from "@/modules/inventory/api";
@@ -16,6 +16,8 @@ interface FoodRow {
   add: boolean; name: string; category: string; locationId: number; expiresAt: string; expiryTouched: boolean; product: Product | null;
   /** "Put away as": how much goes into inventory. Follows the line's quantity (× perOne) until edited. */
   qty: string; unit: string; qtyTouched: boolean; perOne: number; from: PackSource;
+  /** Already put away on this trip (from the shopping list). */
+  already: NonNullable<DraftLine["food"]>["alreadyPutAway"];
 }
 interface Row {
   key: number; include: boolean; name: string; category: string; amount: string; source: DraftLine;
@@ -35,7 +37,7 @@ const round3 = (n: number) => String(Math.round(n * 1000) / 1000);
 
 /**
  * Receipt photos or a PDF (an online order) → AI → review every line (price, item number, discount; food can go straight into inventory) → save.
- * The one receipt scanner: used from Spending and from Inventory's "Scan receipt".
+ * The one receipt scanner: used from Money and from Inventory's "Scan receipt".
  */
 export function ScanReceiptSheet({ open, onClose, onBack }: { open: boolean; onClose: () => void; onBack?: () => void }) {
   const ai = useAiSettings();
@@ -119,7 +121,8 @@ export function ScanReceiptSheet({ open, onClose, onBack }: { open: boolean; onC
       setRows(d.lines.map((l) => {
         const food = l.food && ((): FoodRow => {
           const base = { category: l.food.category, locationId: locFor(l.food.location)?.id ?? 0, product: l.food.product };
-          return { add: l.food.add, name: l.food.name, expiresAt: expiryFor(base, bought), expiryTouched: false, ...base, ...draftAmount(l) };
+          return { add: l.food.add, name: l.food.name, expiresAt: expiryFor(base, bought), expiryTouched: false, ...base, ...draftAmount(l),
+            already: l.food.alreadyPutAway };
         })();
         return { key: l.key, include: true, name: l.name, category: l.category, amount: l.amount.toFixed(2), source: l,
           quantity: round3(l.quantity), unit: l.unit ?? "", itemId: l.item?.id ?? null, suggestionAccepted: null, food, split: null };
@@ -170,8 +173,10 @@ export function ScanReceiptSheet({ open, onClose, onBack }: { open: boolean; onC
       return {
         itemId: r.suggestionAccepted ? r.source.suggestion!.id : r.itemId, code: s.code, name: r.name.trim(), raw: s.raw,
         category: r.category, quantity, unit, unitPrice: s.unitPrice, amount: num(r.amount)!, discount: s.discount, inventory,
-        trackInventory: f ? f.add : null,
+        // Left out because it's already put away isn't "don't keep this in inventory": don't remember it as that.
+        trackInventory: f && !(f.already && !f.add) ? f.add : null,
         split: r.split?.length ? r.split.map((personId) => ({ personId, weight: 1 })) : null,
+        pricesInventoryItemId: f?.already && !f.add ? f.already.itemId : null,
       };
     });
     const saved = await save.mutateAsync({
@@ -324,7 +329,7 @@ function LineRow({ r, expenseCats, foodCats, locations, people, receiptSplit, up
       ? { perOne: s.suggestion!.packQuantity, unit: s.suggestion!.packUnit ?? "", from: "remembered" as const }
       : draftAmount(s);
     updateFood({
-      add: yes ? !s.suggestion!.skipInventory : s.food.add,
+      add: yes ? !s.suggestion!.skipInventory && !r.food.already : s.food.add,
       ...(r.food.qtyTouched ? {} : { perOne: pack.perOne, unit: pack.unit, from: pack.from, qty: round3(lineQty * pack.perOne) }),
     });
   };
@@ -367,7 +372,13 @@ function LineRow({ r, expenseCats, foodCats, locations, people, receiptSplit, up
                 <input type="checkbox" checked={r.food.add} onChange={(e) => updateFood({ add: e.target.checked })} className="size-4 accent-[var(--color-accent)]" />
                 Put away in inventory {r.food.product && <Chip tone="accent">Known item</Chip>}
               </label>
-              {!r.food.add && (s.item?.skipInventory || (r.suggestionAccepted && s.suggestion?.skipInventory)) && (
+              {r.food.already && (
+                <p className={cx("mt-1 text-[11px]", r.food.add ? "text-warn" : "text-muted")}>
+                  Already put away {putAwayWhen(r.food.already.on)}: {formatAmount(r.food.already.quantity, r.food.already.unit)} in {r.food.already.location}.
+                  {r.food.add ? " Ticked, it's added a second time." : " It gets this price."}
+                </p>
+              )}
+              {!r.food.add && !r.food.already && (s.item?.skipInventory || (r.suggestionAccepted && s.suggestion?.skipInventory)) && (
                 <p className="mt-1 text-[11px] text-muted">Left out last time. Spending is still tracked.</p>
               )}
               {r.food.add && (
@@ -436,6 +447,13 @@ function amountHint(f: FoodRow, lineQty: number) {
   if (f.from === "printed") return `Size from the receipt${lineQty !== 1 && per ? ` (${per} each)` : ""}.`;
   return "No size on the receipt. Enter how much it holds (e.g. 2 L) and it's remembered.";
 }
+
+function putAwayWhen(on: string | null) {
+  if (!on || on === todayISO()) return "today";
+  return parseISO(on).toLocaleDateString(undefined, { weekday: "long" });
+}
+
+const formatAmount = (q: number, unit: string | null) => `${round3(q)}${unit ? ` ${unit}` : ""}`;
 
 function boughtBefore(i: ItemRef) {
   return `Bought before${i.lastUnitPrice != null ? `: last ${money(i.lastUnitPrice)}` : ""}${i.lastStore ? ` at ${i.lastStore}` : ""}`;

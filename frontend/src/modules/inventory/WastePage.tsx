@@ -1,7 +1,5 @@
 import { useState } from "react";
-import { Link } from "react-router";
-import { ChevronLeft, Flame } from "lucide-react";
-import { PageHeader } from "@/core/layout";
+import { Flame } from "lucide-react";
 import { Card, cx, Empty, ErrorText, Spinner } from "@/core/ui";
 import { useCategories, useWasteStats, type WasteStats } from "./api";
 import { formatMoney } from "./logic";
@@ -20,12 +18,8 @@ export function WastePage() {
   const [selected, setSelected] = useState<string | null>(null);
   const [productId, setProductId] = useState<number | null>(null);
 
-  const header = (
-    <PageHeader title="Waste" subtitle="What gets thrown out"
-      action={<Link to="/inventory" className="flex items-center gap-1 text-sm text-muted"><ChevronLeft className="size-4" />Inventory</Link>} />
-  );
-  if (stats.isPending) return <>{header}<Spinner /></>;
-  if (stats.error) return <>{header}<ErrorText error={stats.error} /></>;
+  if (stats.isPending) return <Spinner />;
+  if (stats.error) return <ErrorText error={stats.error} />;
 
   const { months, topWasted } = stats.data;
   const current = months.find((m) => m.month === selected) ?? months[months.length - 1]!;
@@ -35,11 +29,10 @@ export function WastePage() {
   const isThisMonth = current === months[months.length - 1];
 
   if (totalWasted === 0 && totalUsed === 0)
-    return <>{header}<Empty icon={<Flame className="size-8" />} title="Nothing yet">When you mark food as used or thrown out, it adds up here.</Empty></>;
+    return <Empty icon={<Flame className="size-8" />} title="Nothing yet">When you mark food as used or thrown out, it adds up here.</Empty>;
 
   return (
     <>
-      {header}
       <div className="flex flex-col gap-4">
         <Card>
           <p className="text-xs font-medium text-muted">{isThisMonth ? "This month" : monthName(current.month)}</p>

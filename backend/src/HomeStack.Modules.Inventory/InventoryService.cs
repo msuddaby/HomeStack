@@ -394,6 +394,29 @@ public class InventoryService(HomeStackDbContext db, ICurrentUser me, TimeProvid
     public async Task<ProductDto> GetProductAsync(int id) =>
         (await Products.SingleOrDefaultAsync(p => p.Id == id) ?? throw new NotFoundException("Product not found")).ToDto();
 
+    /// <summary>
+    /// The newest item per product added on or after <paramref name="since"/> without a price: put away from the
+    /// shopping list or by hand. A receipt for the same shopping trip shouldn't add these again.
+    /// </summary>
+    public async Task<Dictionary<int, ItemDto>> GetRecentUnpricedAsync(IReadOnlyCollection<int> productIds, DateOnly since)
+    {
+        if (productIds.Count == 0) return [];
+        var items = await Items.Where(i => productIds.Contains(i.ProductId) && i.UnitPrice == null && i.PurchasedAt >= since).ToListAsync();
+        return items.GroupBy(i => i.ProductId).ToDictionary(g => g.Key, g => g.MaxBy(i => i.CreatedAt)!.ToDto());
+    }
+
+    /// <summary>Gives an unpriced item the price paid for it (from a receipt saved later), so waste stats can count it.</summary>
+    public async Task SetPriceIfMissingAsync(int itemId, decimal price)
+    {
+        var item = await db.Set<InventoryItem>().SingleOrDefaultAsync(i => i.HouseholdId == Hid && i.Id == itemId);
+        if (item is null || item.UnitPrice is not null) return;
+        // Per unit as put away, not as it is now: some may be used already.
+        var added = await db.Set<InventoryEvent>().Where(e => e.HouseholdId == Hid && e.ItemId == itemId && e.Type == InventoryEventType.Added)
+            .Select(e => (double?)e.Quantity).FirstOrDefaultAsync();
+        item.UnitPrice = Mapping.UnitPrice(price, added ?? item.Quantity);
+        await db.SaveChangesAsync();
+    }
+
     /// <summary>Find a product by exact name (case-insensitive), for linking free-text entries.</summary>
     public async Task<ProductDto?> FindByNameAsync(string name)
     {

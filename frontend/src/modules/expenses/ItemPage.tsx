@@ -1,8 +1,9 @@
 import { useDeferredValue, useEffect, useState } from "react";
 import { Link, useParams } from "react-router";
-import { ArrowLeft, Combine, Pencil } from "lucide-react";
+import { ArrowLeft, Combine, Pencil, Refrigerator } from "lucide-react";
 import { shortDate } from "@/core/dates";
 import { Button, Card, Chip, cx, ErrorText, Field, Input, Select, Sheet, Spinner } from "@/core/ui";
+import { ProductSheet } from "@/modules/inventory/ProductSheet";
 import { useExpenseCategories, useItem, useItems, useMergeItem, useUpdateItem, type TrackedItem } from "./api";
 import { money, rhythmText } from "./format";
 
@@ -12,6 +13,7 @@ export function ItemPage() {
   const categories = useExpenseCategories().data ?? [];
   const [editing, setEditing] = useState(false);
   const [merging, setMerging] = useState(false);
+  const [product, setProduct] = useState<number | null>(null);
 
   if (detail.error) return <ErrorText error={detail.error} />;
   const d = detail.data;
@@ -29,7 +31,12 @@ export function ItemPage() {
       <div className="flex flex-wrap gap-2">
         <Button onClick={() => setEditing(true)}><Pencil className="size-4" />Edit</Button>
         <Button variant="ghost" onClick={() => setMerging(true)}><Combine className="size-4" />Same as another item…</Button>
+        {/* The inventory side of the same thing: minimum to keep, shelf life. */}
+        {d.item.productId != null && (
+          <Button variant="ghost" onClick={() => setProduct(d.item.productId)}><Refrigerator className="size-4" />Minimum &amp; shelf life</Button>
+        )}
       </div>
+      <ProductSheet productId={product} onClose={() => setProduct(null)} />
 
       <Card>
         <dl className="grid grid-cols-2 gap-3 text-sm">

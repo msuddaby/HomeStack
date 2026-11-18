@@ -8,7 +8,7 @@ namespace HomeStack.Modules.Expenses;
 
 /// <summary>A tracked item, as shown next to a receipt line: "Tide Pods, last $27.99 at Costco".</summary>
 public record ItemRefDto(int Id, string Name, string? LastStore, decimal? LastUnitPrice, bool SkipInventory,
-    double? PackQuantity = null, string? PackUnit = null);
+    double? PackQuantity = null, string? PackUnit = null, int? ProductId = null);
 
 /// <summary>
 /// What a food line would add to inventory. <see cref="Add"/> is the starting tick: off when the household
@@ -16,7 +16,12 @@ public record ItemRefDto(int Id, string Name, string? LastStore, decimal? LastUn
 /// ("2 L" for a line that just says PACE SALSA); <see cref="AmountFrom"/> says where that came from.
 /// </summary>
 public record DraftFoodDto(string Name, string Category, LocationKind Location, ProductDto? Product, bool Add,
-    double Quantity, string? Unit, PackSource AmountFrom);
+    double Quantity, string? Unit, PackSource AmountFrom,
+    // Already in inventory from this shopping trip (put away from the list, unpriced). Starts unticked; saving
+    // with it unticked gives that item the line's price.
+    AlreadyPutAwayDto? AlreadyPutAway = null);
+
+public record AlreadyPutAwayDto(int ItemId, DateOnly? On, double Quantity, string? Unit, string Location);
 
 /// <summary>Where a put-away amount came from: remembered on the item, a size printed on the receipt, or just the receipt quantity.</summary>
 public enum PackSource { Receipt, Printed, Remembered }
@@ -56,7 +61,9 @@ public record SaveLineRequest(
     // For food lines: whether "Put away" was ticked. Remembered on the item for next time. Null for non-food.
     bool? TrackInventory = null,
     // Who this line is split between, when not the receipt's split. Null or empty: the receipt's split.
-    List<SplitPartDto>? Split = null) : IValidatable
+    List<SplitPartDto>? Split = null,
+    // Not put away because it already was (from the shopping list): this inventory item gets the line's price.
+    int? PricesInventoryItemId = null) : IValidatable
 {
     public IEnumerable<ValidationResult> Validate()
     {

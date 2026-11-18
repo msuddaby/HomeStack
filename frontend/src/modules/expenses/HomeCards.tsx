@@ -1,35 +1,51 @@
 import { Link } from "react-router";
-import { AlertTriangle, CalendarClock, HandCoins, Users, Wallet } from "lucide-react";
+import { AlertTriangle, CalendarClock, HandCoins, Receipt, Users, Wallet } from "lucide-react";
 import { shortDate, todayISO } from "@/core/dates";
-import { Card, cx } from "@/core/ui";
-import { useBalances, useSummary, useUpcoming, type Balance } from "./api";
-import { DueList } from "./DueList";
-import { monthLabel, money } from "./format";
+import type { HomeCard, RestockSuggestion } from "@/core/modules";
+import { Button, Card, cx } from "@/core/ui";
+import { useBalances, useDueItems, useSummary, useUpcoming, type Balance } from "./api";
+import { monthLabel, money, rhythmText } from "./format";
 
-export function ExpensesDashboardWidget() {
-  const summary = useSummary();
-  const s = summary.data;
+/** This month's spending at a glance. */
+function MonthSpending() {
+  const s = useSummary().data;
+  if (!s) return null;
   return (
-    <>
-      {s && (
-        <Card title={<span className="flex items-center gap-2"><Wallet className="size-4 text-accent" />Spending</span>}
-          action={<Link to="/expenses" className="text-xs text-accent">Details →</Link>}>
-          <p className="text-sm text-muted">{monthLabel(s.month)}</p>
-          <p className="text-2xl font-bold tabular-nums">{money(s.total)}</p>
-          {s.byCategory.length > 0 && (
-            <p className="mt-1 truncate text-xs text-muted">
-              {s.byCategory.slice(0, 3).map((b) => `${b.label} ${money(b.total)}`).join(" · ")}
-            </p>
-          )}
-        </Card>
+    <Card title={<span className="flex items-center gap-2"><Wallet className="size-4 text-accent" />Spent this month</span>}
+      action={<Link to="/expenses" className="text-xs text-accent">Details →</Link>}>
+      <p className="text-sm text-muted">{monthLabel(s.month)}</p>
+      <p className="text-2xl font-bold tabular-nums">{money(s.total)}</p>
+      {s.byCategory.length > 0 && (
+        <p className="mt-1 truncate text-xs text-muted">
+          {s.byCategory.slice(0, 3).map((b) => `${b.label} ${money(b.total)}`).join(" · ")}
+        </p>
       )}
-      <YouOwe />
-      <OwedToOthers />
-      <BillsDue />
-      <DueList limit={4} />
-    </>
+    </Card>
   );
 }
+
+function ScanReceipt() {
+  return (
+    <Link to="/expenses?add=receipt" className="block">
+      <Button className="w-full"><Receipt className="size-4" />Scan a receipt</Button>
+    </Link>
+  );
+}
+
+/** Things bought regularly that are about due, for Home's shopping card. */
+function useDueSuggestions(): RestockSuggestion[] {
+  const due = useDueItems().data ?? [];
+  return due.map((i) => ({ key: `due-${i.id}`, name: i.name, productId: i.productId, reason: rhythmText(i.rhythm!) }));
+}
+
+export const expensesHomeCards: HomeCard[] = [
+  { id: "scan-receipt", section: "actions", order: 20, Component: ScanReceipt },
+  { id: "bills-due", section: "attention", order: 10, Component: BillsDue },
+  { id: "you-owe", section: "attention", order: 11, Component: YouOwe },
+  { id: "owed-to-others", section: "glance", order: 11, Component: OwedToOthers },
+  { id: "month-spending", section: "glance", order: 10, Component: MonthSpending },
+];
+export { useDueSuggestions };
 
 /** Just what you owe, and for what. Hidden when you're square. */
 function YouOwe() {

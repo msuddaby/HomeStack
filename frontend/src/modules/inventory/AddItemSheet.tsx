@@ -6,7 +6,7 @@ import { Button, Chip, cx, ErrorText, Field, Input, Sheet } from "@/core/ui";
 import { lookupBarcode, useAddItem, useCategories, useLocations, useProductSearch, type Product } from "./api";
 import { BarcodeScanner } from "./BarcodeScanner";
 import { ReadSheet } from "./ReadSheet";
-// Receipts are read by Spending, which records the whole receipt and puts the food away here.
+// Receipts are read by Money (the expenses module), which records the whole receipt and puts the food away here.
 import { ScanReceiptSheet } from "@/modules/expenses/ScanReceiptSheet";
 import { guessCategory, suggestExpiry } from "./logic";
 

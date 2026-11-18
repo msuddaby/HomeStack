@@ -1,6 +1,6 @@
 import { ChefHat } from "lucide-react";
 import type { WebModule } from "@/core/modules";
-import { MealsDashboardWidget } from "./DashboardWidget";
+import { MealsDashboardWidget } from "./HomeCard";
 import { KitchenPage } from "./KitchenPage";
 import { MealsLayout } from "./MealsLayout";
 import { PlanPage } from "./PlanPage";
@@ -27,5 +27,5 @@ export const mealsModule: WebModule = {
   },
   // Full screen, outside the meals tabs.
   { path: "recipes/:id/kitchen", Component: KitchenPage }],
-  DashboardWidget: MealsDashboardWidget,
+  homeCards: [{ id: "todays-meals", section: "today", order: 10, Component: MealsDashboardWidget }],
 };

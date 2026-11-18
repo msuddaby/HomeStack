@@ -58,7 +58,7 @@ public class ExpensesService(HomeStackDbContext db, ICurrentUser me, TimeProvide
         return items.ToDictionary(i => i.Id, i =>
         {
             var last = rows.Where(r => r.ItemId == i.Id).MaxBy(r => (r.Date, r.ReceiptId));
-            return new ItemRefDto(i.Id, i.Name, last?.Store, last?.EffectiveUnitPrice, i.SkipInventory, i.PackQuantity, i.PackUnit);
+            return new ItemRefDto(i.Id, i.Name, last?.Store, last?.EffectiveUnitPrice, i.SkipInventory, i.PackQuantity, i.PackUnit, i.ProductId);
         });
     }
 
@@ -102,6 +102,8 @@ public class ExpensesService(HomeStackDbContext db, ICurrentUser me, TimeProvide
                     Notes = add.Notes ?? (store is null ? null : $"From {store.Name}"),
                 }));
             }
+            else if (line.PricesInventoryItemId is int priced)
+                await inventory.SetPriceIfMissingAsync(priced, line.Amount);
         }
         var owed = SplitMath.ApplyShares(receipt);
         db.Add(receipt);

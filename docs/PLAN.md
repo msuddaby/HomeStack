@@ -34,7 +34,9 @@ frontend/
 ### Module contract
 Each module registers itself on both sides:
 - **backend**: a class implementing `IModule` (`AddServices`, `ConfigureModel`, `MapEndpoints`, `OnHouseholdCreatedAsync`), mounted at `/api/<id>` behind auth. Its tables are prefixed `<id>_` and live in the shared `HomeStackDbContext`.
-- **frontend**: a `WebModule` (`id, name, icon, path, routes, DashboardWidget?, Settings?`). The home dashboard pulls in every module's widgets, so new modules show up there automatically.
+- **frontend**: a `WebModule` (`id, name, icon, path, routes, homeCards?, useRestockSuggestions?, ProductExtra?, Settings?`).
+  Home is ordered by urgency, not by module: quick actions, then "needs attention" (expired food, bills due, money you
+  owe), then today (meals, shopping list with suggestions from every module), then how things stand.
 
 Modules may read each other through service functions (e.g. meal planning reads inventory), never through each other's tables directly.
 
@@ -81,8 +83,8 @@ Modules may read each other through service functions (e.g. meal planning reads 
   new ones otherwise; missing/expiring worked out against real stock; nothing saved until accepted (new ones tagged `idea`)
 - An **MCP server** exposing HomeStack, so you can ask Claude "what's about to go off?" from any client
 
-### Phase 5: Spending ✅ (built 2026-11-17)
-- `expenses` module ("Spending"): stores, receipts, receipt lines, tracked items and each store's item numbers for them
+### Phase 5: Money ✅ (built 2026-11-17)
+- `expenses` module ("Money", called "Spending" until 2026-11-18): stores, receipts, receipt lines, tracked items and each store's item numbers for them
 - One receipt scanner (from Spending or Inventory → Add → Scan receipt): every line with item number, quantity, price and
   discount, plus store, tax and total; food lines can go into inventory in the same save (one transaction); receipt photos kept.
   Online orders: upload the PDF receipt instead (first 4 pages read; skipped/out-of-stock items left out); the PDF is kept.
@@ -117,7 +119,11 @@ Modules may read each other through service functions (e.g. meal planning reads 
   (`HouseholdDeleter` clears every table with a `HouseholdId`, so new modules are covered), but can't see their data.
   The admin picks households to share their AI with (`Household.UseSharedAi`; used only while a household has none of its own). Backups are instance-admin only.
   Later: household admins inviting their own members by link
-- Waste stats: money/items thrown out per month
+- ✅ Waste stats: items and money thrown out per month, most-wasted products (Inventory → Waste)
+- ✅ UX pass (2026-11-18): Home ordered by urgency; five phone tabs (Settings is the gear on Home); every section
+  uses a title and tabs (Inventory: Items · Products · Waste); Money has one Add button; settings grouped into
+  You / Household / This server; products link to their price history and back. A receipt scanned after "Put away"
+  on the shopping list starts those foods unticked and prices the items already put away.
 
 ### Future module ideas
 Home maintenance (filters, smoke detector batteries, seasonal tasks), chores, warranties and manuals,

@@ -5,6 +5,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using HomeStack.Modules.Expenses;
 using HomeStack.Modules.Inventory;
+using HomeStack.Modules.Shopping;
 using SkiaSharp;
 
 namespace HomeStack.Tests;
@@ -196,6 +197,59 @@ public class ExpensesTests
         Assert.False((await ScanCoke()).Food!.Add);
 
         Assert.Contains(await (await c.GetAsync("/api/expenses/categories")).Read<List<ExpenseCategory>>(), x => x.Id == "snacks");
+    }
+
+    [Fact]
+    public async Task Food_put_away_from_the_shopping_list_is_not_added_again_by_its_receipt()
+    {
+        using var app = new TestApp();
+        var c = await StartWithAi(app);
+        var fridge = (await (await c.GetAsync("/api/inventory/locations")).Read<List<LocationDto>>()).First(l => l.Kind == LocationKind.Fridge).Id;
+
+        // Bought milk from the list and put it away.
+        var milk = await (await c.Post("/api/shopping/items", new { name = "Milk", category = "dairy", quantity = 2, unit = "L" })).Read<ShoppingItemDto>();
+        (await c.Post($"/api/shopping/items/{milk.Id}/check", new { @checked = true })).EnsureSuccessStatusCode();
+        await c.Post("/api/shopping/put-away", new { lines = new object[] { new { shoppingItemId = milk.Id, addToInventory = true, locationId = fridge } } });
+        var carton = (await (await c.GetAsync("/api/inventory/items")).Read<List<ItemDto>>()).Single();
+        Assert.Null(carton.Price);
+
+        // Then scanned the receipt: two milk lines and bread.
+        app.Ai.Bodies.Enqueue(OpenAiReply(new
+        {
+            store = "Safeway", date = app.Today.ToString("yyyy-MM-dd"), total = 12.47,
+            lines = new object[]
+            {
+                new { name = "Milk", amount = 4.49, category = "groceries", food = true, foodCategory = "dairy", location = "fridge" },
+                new { name = "Milk", amount = 4.49, category = "groceries", food = true, foodCategory = "dairy", location = "fridge" },
+                new { name = "Bread", amount = 3.49, category = "groceries", food = true, foodCategory = "bakery", location = "pantry" },
+            },
+        }));
+        var draft = await (await c.PostAsync("/api/expenses/read", Photo())).Read<ReceiptDraftDto>();
+
+        var first = draft.Lines[0].Food!;
+        Assert.False(first.Add); // starts unticked
+        Assert.Equal(carton.Id, first.AlreadyPutAway?.ItemId);
+        Assert.Equal(2, first.AlreadyPutAway?.Quantity);
+        Assert.True(draft.Lines[1].Food!.Add); // the one carton only covers one line
+        Assert.Null(draft.Lines[1].Food!.AlreadyPutAway);
+        Assert.True(draft.Lines[2].Food!.Add);
+
+        // Saved unticked, the carton gets the receipt price, and "put away" isn't remembered as off.
+        var saved = await (await c.Post("/api/expenses/receipts", Receipt("Safeway", app.Today, 4.49m,
+            new { name = "Milk", category = "groceries", quantity = 1, amount = 4.49m, pricesInventoryItemId = carton.Id }))).Read<ReceiptDto>();
+        Assert.Equal(0, saved.AddedToInventory);
+        var items = await (await c.GetAsync("/api/inventory/items")).Read<List<ItemDto>>();
+        Assert.Equal(4.49m, items.Single().Price);
+
+        // Priced now, so a later scan doesn't think it's still unpaid-for.
+        app.Ai.Bodies.Enqueue(OpenAiReply(new
+        {
+            store = "Safeway", date = app.Today.ToString("yyyy-MM-dd"), total = 4.49,
+            lines = new object[] { new { name = "Milk", amount = 4.49, category = "groceries", food = true, foodCategory = "dairy", location = "fridge" } },
+        }));
+        var again = (await (await c.PostAsync("/api/expenses/read", Photo())).Read<ReceiptDraftDto>()).Lines.Single().Food!;
+        Assert.True(again.Add);
+        Assert.Null(again.AlreadyPutAway);
     }
 
     [Fact]

@@ -75,7 +75,14 @@ Migrations are applied automatically on startup.
    (entities in `ConfigureModel` with tables prefixed `<id>_`, endpoints in `MapEndpoints`, scoped by
    `ICurrentUser.HouseholdId`). Register it in the `modules` array in `src/HomeStack.Api/Program.cs`, then add a migration.
 2. **Frontend:** create `src/modules/<id>/index.ts` exporting a `WebModule` and add it to `src/modules/index.ts`.
-   It gets a nav tab, its routes under `/<path>`, and its `DashboardWidget` on Home automatically.
+   It gets a nav tab and its routes under `/<path>` automatically. Pages use `PageHeader` (and `TabbedSection` for
+   tabs) so every section looks the same. Optional extension points:
+   - `homeCards`: cards for Home, each in a section ordered by urgency (`actions`, `attention`, `today`, `glance`).
+     Attention cards render nothing when there's nothing to deal with.
+   - `useRestockSuggestions`: things worth buying, shown on Home's shopping card with one-tap add.
+   - `ProductExtra`: a row in the inventory product sheet (Money uses it to link price history).
+   - `Settings`: a card under "Household" on the settings page.
+   Read other modules' extension points with `useModules()`, not by importing `@/modules`.
 3. **AI (optional):** inject `AiService` and call `JsonAsync<T>(new AiPrompt(system, user, images))`. It uses whatever
    provider the household picked; throw nothing provider-specific. Results are suggestions for the user to review.
 4. **Daily reminder (optional):** register a scoped `IDigestSource` in `AddServices` returning `DigestSection`s;

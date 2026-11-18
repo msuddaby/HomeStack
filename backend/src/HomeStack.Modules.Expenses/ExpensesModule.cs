@@ -10,11 +10,11 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace HomeStack.Modules.Expenses;
 
-/// <summary>Spending: scanned receipts and manual expenses, what was bought where, and how often.</summary>
+/// <summary>Money (was "Spending"): scanned receipts and manual expenses, what was bought where, and how often.</summary>
 public class ExpensesModule : IModule
 {
     public string Id => "expenses";
-    public string Name => "Spending";
+    public string Name => "Money";
 
     public void AddServices(IServiceCollection services, IConfiguration configuration)
     {

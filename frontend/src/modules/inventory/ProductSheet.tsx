@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { ImagePlus } from "lucide-react";
 import { ApiError, errorMessage } from "@/core/api";
+import { useModules } from "@/core/modules";
 import { shrinkImage } from "@/core/ai";
 import { Button, ErrorText, Field, Input, PhotoButton, Select, Sheet } from "@/core/ui";
 import { useCategories, useProduct, useRemoveProductImage, useSaveProduct, useSetProductImage, type Product } from "./api";
@@ -19,6 +20,7 @@ const num = (s: string) => (s.trim() === "" ? null : Number(s));
 /** Edit what a product *is*: photo, name, category, barcode, low-stock minimum and shelf-life overrides. */
 export function ProductSheet({ productId, onClose }: { productId: number | null; onClose: () => void }) {
   const product = useProduct(productId);
+  const extras = useModules().flatMap((m) => (m.ProductExtra ? [{ id: m.id, Extra: m.ProductExtra }] : []));
   const categories = useCategories().data ?? [];
   const save = useSaveProduct();
   const setImage = useSetProductImage();
@@ -80,6 +82,7 @@ export function ProductSheet({ productId, onClose }: { productId: number | null;
             </div>
           </div>
           {photoError && <p className="col-span-2 -mt-1 text-sm text-danger">{photoError}</p>}
+          {productId != null && extras.map(({ id, Extra }) => <div key={id} className="col-span-2 empty:hidden"><Extra productId={productId} onNavigate={onClose} /></div>)}
 
           <Field label="Name" className="col-span-2" error={err?.field("name")}><Input value={f.name} onChange={set("name")} required /></Field>
           <Field label="Category" className="col-span-2">

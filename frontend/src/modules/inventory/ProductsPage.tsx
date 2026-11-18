@@ -1,7 +1,5 @@
 import { useDeferredValue, useMemo, useState } from "react";
-import { Link } from "react-router";
-import { ArrowLeft, Search } from "lucide-react";
-import { PageHeader } from "@/core/layout";
+import { Search } from "lucide-react";
 import { Chip, Empty, Input, Spinner } from "@/core/ui";
 import { useCategories, useProducts } from "./api";
 import { ProductSheet } from "./ProductSheet";
@@ -18,8 +16,7 @@ export function ProductsPage() {
 
   return (
     <>
-      <Link to="/inventory" className="mb-2 inline-flex items-center gap-1 text-sm text-muted"><ArrowLeft className="size-4" />Inventory</Link>
-      <PageHeader title="Products" subtitle="Set minimums and shelf lives" />
+      <p className="mb-3 text-sm text-muted">Everything you've added. Tap one to set a minimum or how long it keeps.</p>
       <div className="relative mb-3">
         <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" />
         <Input className="pl-9" placeholder="Search products" value={q} onChange={(e) => setQ(e.target.value)} type="search" />

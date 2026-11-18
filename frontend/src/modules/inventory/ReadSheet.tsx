@@ -14,7 +14,7 @@ interface Row {
 }
 
 /**
- * Typed or dictated list → AI → editable review list → add all. (Receipts go through Spending's ScanReceiptSheet,
+ * Typed or dictated list → AI → editable review list → add all. (Receipts go through Money's ScanReceiptSheet,
  * which records the whole receipt and puts the food away.)
  */
 export function ReadSheet({ open, onBack, onDone }: { open: boolean; onBack: () => void; onDone: () => void }) {

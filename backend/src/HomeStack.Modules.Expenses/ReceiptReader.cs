@@ -170,9 +170,27 @@ public partial class ReceiptReader(AiService ai, ExpensesService expenses, Inven
         }).ToList();
 
         DateOnly? date = DateOnly.TryParse(reply.Date, out var dt) && dt <= today && dt >= today.AddYears(-2) ? dt : null;
+        draftLines = await MarkAlreadyPutAwayAsync(draftLines, date ?? today);
         var total = Money(reply.Total) ?? (draftLines.Count > 0 ? draftLines.Sum(l => l.Amount) + (Money(reply.Tax) ?? 0) : null);
         return new ReceiptDraftDto(storeName, date, Money(reply.Subtotal), Money(reply.Tax), total, draftLines, Clean(reply.Note, 300),
             await expenses.FindDuplicateAsync(store?.Id, date, total));
+    }
+
+    /// <summary>
+    /// Food already put away from the shopping list on this trip (an unpriced item added since the day before the
+    /// receipt) starts unticked, so scanning the receipt afterwards doesn't add it twice.
+    /// </summary>
+    private async Task<List<DraftLineDto>> MarkAlreadyPutAwayAsync(List<DraftLineDto> lines, DateOnly bought)
+    {
+        static int? ProductOf(DraftLineDto l) => l.Food?.Product?.Id ?? l.Item?.ProductId;
+        var recent = await inventory.GetRecentUnpricedAsync(lines.Select(ProductOf).OfType<int>().Distinct().ToList(), bought.AddDays(-1));
+        var claimed = new HashSet<int>();
+        return lines.Select(l =>
+        {
+            // One receipt line per put-away item: two lines of milk don't both match the one carton.
+            if (l.Food is not { } f || ProductOf(l) is not int pid || !recent.TryGetValue(pid, out var item) || !claimed.Add(item.Id)) return l;
+            return l with { Food = f with { Add = false, AlreadyPutAway = new AlreadyPutAwayDto(item.Id, item.PurchasedAt, item.Quantity, item.Unit, item.Location.Name) } };
+        }).ToList();
     }
 
     private static decimal? Money(decimal? d) => d is { } v && Math.Abs(v) < 1_000_000 ? Math.Round(v, 2) : null;

@@ -27,6 +27,8 @@ export interface DraftLine {
   food: {
     name: string; category: string; location: LocationKind; product: Product | null; add: boolean;
     quantity: number; unit: string | null; amountFrom: PackSource;
+    /** Put away already on this trip (from the shopping list): starts unticked so it isn't added twice. */
+    alreadyPutAway: { itemId: number; on: string | null; quantity: number; unit: string | null; location: string } | null;
   } | null;
 }
 export interface ReceiptDraft {
@@ -62,6 +64,8 @@ export interface SaveLine {
   trackInventory: boolean | null;
   /** Who this line is split between, when not the receipt's split. */
   split: SplitPart[] | null;
+  /** Left out because it was already put away: that inventory item gets this line's price. */
+  pricesInventoryItemId?: number | null;
 }
 export interface SaveReceipt {
   store: string | null; purchasedAt: string; subtotal: number | null; tax: number | null; total: number; note: string | null; lines: SaveLine[];

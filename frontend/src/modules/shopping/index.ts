@@ -1,6 +1,6 @@
 import { ShoppingCart } from "lucide-react";
 import type { WebModule } from "@/core/modules";
-import { ShoppingDashboardWidget } from "./DashboardWidget";
+import { ShoppingDashboardWidget } from "./HomeCard";
 import { ShoppingPage } from "./ShoppingPage";
 
 export const shoppingModule: WebModule = {
@@ -9,5 +9,5 @@ export const shoppingModule: WebModule = {
   icon: ShoppingCart,
   path: "shopping",
   routes: [{ index: true, Component: ShoppingPage }],
-  DashboardWidget: ShoppingDashboardWidget,
+  homeCards: [{ id: "shopping-list", section: "today", order: 20, Component: ShoppingDashboardWidget }],
 };
