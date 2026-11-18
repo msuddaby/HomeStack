@@ -33,7 +33,6 @@ public class HomeStackDbContext(DbContextOptions<HomeStackDbContext> options, IE
         Notifications.PushSubscription.Configure(mb);
         Notifications.VapidKeys.Configure(mb);
         Ai.AiSettings.Configure(mb);
-        Admin.InstanceSettings.Configure(mb);
         Admin.HouseholdInvite.Configure(mb);
         Images.StoredImage.Configure(mb);
         Images.StoredFile.Configure(mb);

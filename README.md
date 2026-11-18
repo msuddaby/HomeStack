@@ -34,8 +34,8 @@ under **Settings → Household members**. The container restarts on its own afte
 - **More households:** one server can hold several households, each private to its members. The HomeStack admin
   (username `matt` by default; change with `Admin__Usernames__0` in the container's environment) gets
   **Settings → Manage HomeStack**: invite links that let someone set up their own household, renaming, resetting a
-  forgotten password, deleting a household, and a switch to share their AI with households that haven't set up their
-  own. The admin can't see inside other households. Admin usernames are reserved, and only the admin sees backups
+  forgotten password, deleting a household, and choosing which households may use their AI (until they set up their
+  own). The admin can't see inside other households. Admin usernames are reserved, and only the admin sees backups
   (they hold every household).
 - **Update:** `git pull && docker compose up -d --build`.
 

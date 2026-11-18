@@ -67,12 +67,14 @@ public class AiService(HomeStackDbContext db, ICurrentUser me, IEnumerable<IAiPr
 
     /// <summary>
     /// What AI calls use: the household's own connection, or else the instance admin's household's when the admin
-    /// shares it (<see cref="Admin.InstanceSettings.ShareAi"/>). <c>SharedBy</c> names the admin for a shared one.
+    /// shares it with this household (<see cref="Data.Household.UseSharedAi"/>). <c>SharedBy</c> names the admin for a shared one.
     /// </summary>
     public async Task<(AiSettings Settings, string? SharedBy)?> GetEffectiveAsync(CancellationToken ct = default)
     {
         if (await GetSettingsAsync(ct) is { } own) return (own, null);
-        if (!(await instance.SettingsAsync(ct)).ShareAi || await instance.MainHouseholdAsync(ct) is not { } main || main.Id == me.HouseholdId)
+        var hid = me.HouseholdId;
+        if (!await db.Households.AnyAsync(h => h.Id == hid && h.UseSharedAi, ct)
+            || await instance.MainHouseholdAsync(ct) is not { } main || main.Id == hid)
             return null;
         var shared = await db.Set<AiSettings>().AsNoTracking().SingleOrDefaultAsync(s => s.HouseholdId == main.Id, ct);
         return shared is null ? null : (shared, main.AdminName);

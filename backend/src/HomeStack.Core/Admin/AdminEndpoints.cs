@@ -11,7 +11,9 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace HomeStack.Core.Admin;
 
-public record AdminHouseholdDto(int Id, string Name, DateTime CreatedAt, int Members, List<string> Admins, bool OwnAi, bool IsMine);
+/// <param name="OwnAi">Has its own AI connection (which it uses even when sharing is on).</param>
+/// <param name="SharedAi">The admin shares their AI with this household.</param>
+public record AdminHouseholdDto(int Id, string Name, DateTime CreatedAt, int Members, List<string> Admins, bool OwnAi, bool IsMine, bool SharedAi);
 public record AdminUserDto(int Id, string Name, string Username, bool IsAdmin);
 public record RenameHouseholdRequest([Required, StringLength(80, MinimumLength = 1)] string Name);
 public record ResetPasswordRequest([Required, StringLength(200, MinimumLength = 8)] string NewPassword);
@@ -21,8 +23,10 @@ public record InviteDto(int Id, string? Note, DateTime CreatedAt, DateTime Expir
 public record NewInviteDto(InviteDto Invite, string Token);
 public record CreateInviteRequest([StringLength(80)] string? Note, [Range(1, 30)] int Days = 7);
 
-public record InstanceSettingsDto(bool ShareAi, string? MainHousehold);
-public record InstanceSettingsRequest(bool ShareAi);
+/// <param name="MainHousehold">The admin's household, whose AI can be shared.</param>
+/// <param name="MainHasAi">It has an AI connection to share.</param>
+public record InstanceSettingsDto(string? MainHousehold, bool MainHasAi);
+public record SharedAiRequest(bool Shared);
 
 /// <summary>What someone opening an invite link sees before signing up.</summary>
 public record InviteCheckDto(bool Valid, string? Note, DateTime? ExpiresAt);
@@ -83,7 +87,7 @@ public static class AdminEndpoints
             return (await db.Households.OrderBy(h => h.Name).ToListAsync(ct)).Select(h => new AdminHouseholdDto(
                 h.Id, h.Name, h.CreatedAt, users.Count(u => u.HouseholdId == h.Id),
                 users.Where(u => u.HouseholdId == h.Id && u.IsAdmin).Select(u => u.Name).Order().ToList(),
-                ownAi.Contains(h.Id), h.Id == mine)).ToList();
+                ownAi.Contains(h.Id), h.Id == mine, h.UseSharedAi && h.Id != mine)).ToList();
         });
 
         g.MapPut("/households/{id:int}", async (int id, RenameHouseholdRequest req, HomeStackDbContext db, CancellationToken ct) =>
@@ -150,16 +154,21 @@ public static class AdminEndpoints
             return Results.NoContent();
         });
 
-        g.MapGet("/settings", async (InstanceAdmin admin, CancellationToken ct) =>
-            new InstanceSettingsDto((await admin.SettingsAsync(ct)).ShareAi, await MainNameAsync(admin, ct)));
-
-        g.MapPut("/settings", async (InstanceSettingsRequest req, InstanceAdmin admin, HomeStackDbContext db, CancellationToken ct) =>
+        g.MapGet("/settings", async (InstanceAdmin admin, HomeStackDbContext db, CancellationToken ct) =>
         {
-            var s = await db.Set<InstanceSettings>().SingleOrDefaultAsync(ct);
-            if (s is null) db.Add(s = new InstanceSettings());
-            s.ShareAi = req.ShareAi;
+            var main = await admin.MainHouseholdAsync(ct);
+            var hasAi = main is { } m && await db.Set<AiSettings>().AnyAsync(a => a.HouseholdId == m.Id, ct);
+            return new InstanceSettingsDto(main?.HouseholdName, hasAi);
+        });
+
+        // Share (or stop sharing) the admin's AI with one household.
+        g.MapPut("/households/{id:int}/shared-ai", async (int id, SharedAiRequest req, HomeStackDbContext db, ICurrentUser me, CancellationToken ct) =>
+        {
+            var h = await db.Households.SingleOrDefaultAsync(x => x.Id == id, ct) ?? throw new NotFoundException("Household not found");
+            if (h.Id == me.HouseholdId) throw new BadRequestException("That's your own household: it uses your AI already.");
+            h.UseSharedAi = req.Shared;
             await db.SaveChangesAsync(ct);
-            return new InstanceSettingsDto(s.ShareAi, await MainNameAsync(admin, ct));
+            return Results.NoContent();
         });
     }
 
@@ -176,7 +185,4 @@ public static class AdminEndpoints
         return invites.Select(i => new InviteDto(i.Id, i.Note, i.CreatedAt, i.ExpiresAt, i.UsedAt,
             i.UsedForHouseholdId is int h ? names.GetValueOrDefault(h) : null, i.RevokedAt)).ToList();
     }
-
-    private static async Task<string?> MainNameAsync(InstanceAdmin admin, CancellationToken ct) =>
-        (await admin.MainHouseholdAsync(ct))?.HouseholdName;
 }
