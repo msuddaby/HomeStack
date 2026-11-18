@@ -4,6 +4,7 @@ import type { LucideIcon } from "lucide-react";
 import { modules } from "@/modules";
 import { ToastProvider } from "./toast";
 import { cx } from "./ui";
+import { haptic } from "./motion";
 
 interface NavItem { to: string; label: string; icon: LucideIcon; end?: boolean }
 
@@ -18,14 +19,14 @@ export function Layout() {
     <ToastProvider>
     <div className="min-h-dvh md:flex">
       {/* Desktop sidebar */}
-      <aside className="sticky top-0 hidden h-dvh w-56 shrink-0 flex-col gap-1 border-r border-border bg-surface p-3 md:flex">
+      <aside className="vt-static-side sticky top-0 hidden h-dvh w-56 shrink-0 flex-col gap-1 border-r border-border bg-surface p-3 md:flex">
         <div className="mb-4 flex items-center gap-2 px-2 py-1">
           <img src="/icon.svg" alt="" className="size-8" />
           <span className="text-lg font-bold">HomeStack</span>
         </div>
         {nav.map((n) => (
-          <NavLink key={n.to} to={n.to} end={n.end}
-            className={({ isActive }) => cx("flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium",
+          <NavLink key={n.to} to={n.to} end={n.end} viewTransition
+            className={({ isActive }) => cx("press flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium",
               isActive ? "bg-accent-soft text-accent" : "text-muted hover:bg-surface-2 hover:text-text")}>
             <n.icon className="size-5" />{n.label}
           </NavLink>
@@ -37,13 +38,21 @@ export function Layout() {
       </main>
 
       {/* Phone tab bar */}
-      <nav className="pb-safe fixed inset-x-0 bottom-0 z-40 border-t border-border bg-surface/95 backdrop-blur md:hidden">
+      <nav className="vt-static pb-safe fixed inset-x-0 bottom-0 z-40 border-t border-border bg-surface/95 backdrop-blur md:hidden">
         <div className="flex">
           {nav.map((n) => (
-            <NavLink key={n.to} to={n.to} end={n.end}
-              className={({ isActive }) => cx("flex flex-1 flex-col items-center gap-0.5 py-2 text-[11px] font-medium",
+            <NavLink key={n.to} to={n.to} end={n.end} viewTransition onClick={() => haptic(5)}
+              className={({ isActive }) => cx("press flex flex-1 flex-col items-center gap-0.5 py-2 text-[11px] font-medium transition-colors",
                 isActive ? "text-accent" : "text-muted")}>
-              <n.icon className="size-6" />{n.label}
+              {({ isActive }) => (
+                <>
+                  <span className={cx("grid h-7 w-12 place-items-center rounded-full transition-[background-color,transform] duration-300",
+                    isActive ? "scale-100 bg-accent-soft" : "scale-90 bg-transparent")}>
+                    <n.icon className="size-6" />
+                  </span>
+                  {n.label}
+                </>
+              )}
             </NavLink>
           ))}
         </div>

@@ -193,9 +193,34 @@ export const useSetSplit = () =>
   useExpensesMutation(({ id, ...v }: { id: number; paidByPersonId: number | null; split: SplitPart[] | null; lines?: { lineId: number; split: SplitPart[] | null }[] }) =>
     api<Receipt>(`/expenses/receipts/${id}/split`, { method: "PUT", body: v }));
 export const useBalances = () => useQuery({ queryKey: [...KEY, "balances"], queryFn: () => api<Balances>("/expenses/balances") });
-export const useMarkReceived = () =>
-  useExpensesMutation(({ shareId, received }: { shareId: number; received: boolean }) =>
-    api(`/expenses/shares/${shareId}/received`, { method: "PUT", body: { received } }));
+/** Ticks a share off as paid back. Updates the balances straight away (and puts them back if it fails). */
+export function useMarkReceived() {
+  const qc = useQueryClient();
+  const balancesKey = [...KEY, "balances"];
+  return useMutation({
+    mutationFn: ({ shareId, received }: { shareId: number; received: boolean }) =>
+      api(`/expenses/shares/${shareId}/received`, { method: "PUT", body: { received } }),
+    onMutate: async ({ shareId, received }) => {
+      await qc.cancelQueries({ queryKey: balancesKey });
+      const prev = qc.getQueryData<Balances>(balancesKey);
+      if (prev) {
+        const at = received ? new Date().toISOString() : null;
+        qc.setQueryData<Balances>(balancesKey, {
+          ...prev,
+          balances: prev.balances.map((b) => {
+            if (!b.items.some((i) => i.shareId === shareId)) return b;
+            const items = b.items.map((i) => (i.shareId === shareId ? { ...i, receivedAt: at } : i));
+            const outstanding = Math.round(items.filter((i) => !i.receivedAt).reduce((t, i) => t + i.amount, 0) * 100) / 100;
+            return { ...b, items, outstanding };
+          }),
+        });
+      }
+      return { prev };
+    },
+    onError: (_e, _v, ctx) => ctx?.prev && qc.setQueryData(balancesKey, ctx.prev),
+    onSettled: () => Promise.all(["expenses", "inventory", "shopping"].map((k) => qc.invalidateQueries({ queryKey: [k] }))),
+  });
+}
 
 /** Admins: notify someone of what they owe (everything they owe that person, or one share). Once an hour at most. */
 export const useRemind = () =>

@@ -4,7 +4,7 @@ import { ArrowLeft, BellRing, ChevronDown, FileText, ImagePlus, Pencil, Trash2, 
 import { shrinkImage } from "@/core/ai";
 import { errorMessage } from "@/core/api";
 import { shortDate, todayISO } from "@/core/dates";
-import { Button, Card, Chip, cx, ErrorText, Field, Input, PhotoButton, Sheet, Spinner } from "@/core/ui";
+import { Button, Card, Check, Chip, cx, ErrorText, Field, Input, PhotoButton, Sheet, Spinner } from "@/core/ui";
 import {
   canRemindAgain, remindedLabel, useAddReceiptPhotos, useBalances, useRemind, useBillPaid, useDeleteReceipt, useExpenseCategories, useMarkReceived, usePeople, useReceipt, useSetSplit,
   useUpdateReceipt, type Receipt, type Share,
@@ -176,13 +176,12 @@ function ShareRow({ s, payerId, itemised, canMark, busy, onMark }: {
   const remind = useRemind();
   const canRemind = canMark && s.isMember && !s.receivedAt;
   const extra = Math.round((s.amount - s.lines.reduce((t, l) => t + l.amount, 0)) * 100) / 100;
-  const label = <><span className="min-w-0 flex-1 truncate">{s.person} owes</span>{s.receivedAt && <Chip tone="accent">Received</Chip>}</>;
+  const label = <><span className="min-w-0 flex-1 truncate">{s.person} owes</span>{s.receivedAt && <Chip tone="accent" className="animate-pop">Received</Chip>}</>;
   return (
     <li>
       <div className="flex items-center gap-2">
         {canMark && (
-          <input type="checkbox" checked={!!s.receivedAt} disabled={busy} aria-label={`Received from ${s.person}`}
-            onChange={(e) => onMark(e.target.checked)} className="size-5 shrink-0 accent-[var(--color-accent)]" />
+          <Check checked={!!s.receivedAt} disabled={busy} label={`Received from ${s.person}`} onChange={onMark} />
         )}
         {itemised ? (
           <button type="button" onClick={() => setOpen(!open)} aria-expanded={open} className="flex min-w-0 flex-1 items-center gap-2 text-left">

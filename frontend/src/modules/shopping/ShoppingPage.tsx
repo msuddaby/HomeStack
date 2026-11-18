@@ -1,7 +1,8 @@
-import { useDeferredValue, useMemo, useState } from "react";
-import { Check, Plus, ShoppingCart, Sparkles, PackageCheck } from "lucide-react";
+import { useDeferredValue, useMemo, useRef, useState } from "react";
+import { Plus, ShoppingCart, Sparkles, PackageCheck } from "lucide-react";
+import { useFlip, usePresence } from "@/core/motion";
 import { PageHeader } from "@/core/layout";
-import { Button, Chip, cx, Empty, ErrorText, Spinner } from "@/core/ui";
+import { Button, Check, Chip, cx, Empty, ErrorText, Spinner } from "@/core/ui";
 import { useCategories, useProductSearch } from "@/modules/inventory/api";
 import { formatQty, guessCategory } from "@/modules/inventory/logic";
 import { useAddToList, useCheck, useClearChecked, useShoppingList, type ShoppingItem } from "./api";
@@ -14,6 +15,9 @@ export function ShoppingPage() {
   const [editing, setEditing] = useState<ShoppingItem | null>(null);
   const [puttingAway, setPuttingAway] = useState(false);
   const clear = useClearChecked();
+  // Ticked items glide down into the cart (and back up when unticked) instead of jumping.
+  const listRef = useRef<HTMLDivElement>(null);
+  useFlip(listRef);
 
   const items = list.data ?? [];
   const todo = items.filter((i) => !i.checkedAt);
@@ -32,18 +36,18 @@ export function ShoppingPage() {
           Add things above. Anything you've set a minimum for shows up here automatically when it runs low.
         </Empty>
       ) : (
-        <div className={cx("flex flex-col gap-5", inCart.length > 0 && "pb-20")}>
+        <div ref={listRef} className={cx("flex flex-col gap-5", inCart.length > 0 && "pb-20")}>
           {groups.map((g) => (
             <section key={g.id}>
-              <h2 className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted">{g.emoji} {g.label}</h2>
+              <h2 data-flip={`section-${g.id}`} className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted">{g.emoji} {g.label}</h2>
               <ul className="divide-y divide-border">{g.items.map((i) => <Row key={i.id} item={i} onEdit={() => setEditing(i)} />)}</ul>
             </section>
           ))}
-          {todo.length === 0 && <p className="flex items-center gap-2 text-sm text-muted"><Sparkles className="size-4 text-accent" />Got everything!</p>}
+          {todo.length === 0 && <p className="animate-rise flex items-center gap-2 text-sm text-muted"><Sparkles className="size-4 text-accent" />Got everything!</p>}
 
           {inCart.length > 0 && (
             <section>
-              <div className="mb-1 flex items-center justify-between">
+              <div data-flip="cart" className="mb-1 flex items-center justify-between">
                 <h2 className="text-xs font-semibold uppercase tracking-wide text-muted">In the cart · {inCart.length}</h2>
                 <button className="text-xs text-muted hover:text-text" onClick={() => clear.mutate()} disabled={clear.isPending}>Clear without adding</button>
               </div>
@@ -53,15 +57,7 @@ export function ShoppingPage() {
         </div>
       )}
 
-      {inCart.length > 0 && (
-        <div className="fixed inset-x-0 bottom-[calc(4.25rem+env(safe-area-inset-bottom))] z-30 px-4 md:bottom-6 md:left-56">
-          <div className="mx-auto max-w-3xl">
-            <Button variant="primary" className="w-full shadow-lg" onClick={() => setPuttingAway(true)}>
-              <PackageCheck className="size-5" />Put away {inCart.length} {inCart.length === 1 ? "item" : "items"}
-            </Button>
-          </div>
-        </div>
-      )}
+      <PutAwayButton count={inCart.length} onClick={() => setPuttingAway(true)} />
 
       <EditListItemSheet item={editing} onClose={() => setEditing(null)} />
       <PutAwaySheet open={puttingAway} items={inCart} onClose={() => setPuttingAway(false)} />
@@ -69,21 +65,41 @@ export function ShoppingPage() {
   );
 }
 
+/** Floats above the tab bar while there's anything in the cart; slides in and out. */
+function PutAwayButton({ count, onClick }: { count: number; onClick: () => void }) {
+  const { mounted, leaving } = usePresence(count > 0, 180);
+  const last = useRef(count);
+  if (count > 0) last.current = count;
+  if (!mounted) return null;
+  const n = count || last.current;
+  return (
+    <div className={cx("fixed inset-x-0 bottom-[calc(4.25rem+env(safe-area-inset-bottom))] z-30 px-4 md:bottom-6 md:left-56",
+      leaving ? "pointer-events-none animate-toast-out" : "animate-toast-in")}>
+      <div className="mx-auto max-w-3xl">
+        <Button variant="primary" className="w-full shadow-lg" onClick={onClick}>
+          <PackageCheck className="size-5" />Put away {n} {n === 1 ? "item" : "items"}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/** Rows move to the cart list when ticked (a fresh element), so remember which ones should still play the tick. */
+const justChecked = new Set<number>();
+
 function Row({ item, onEdit }: { item: ShoppingItem; onEdit: () => void }) {
   const check = useCheck();
   const done = !!item.checkedAt;
   const qty = item.quantity != null ? formatQty(item.quantity, item.unit) : null;
   return (
-    <li className="flex items-center gap-1">
-      <button onClick={() => check.mutate({ id: item.id, checked: !done })} aria-label={done ? `Uncheck ${item.name}` : `Check ${item.name}`}
-        className="flex size-12 shrink-0 items-center justify-center">
-        <span className={cx("flex size-6 items-center justify-center rounded-full border-2 transition",
-          done ? "border-accent bg-accent text-accent-text" : "border-border")}>
-          {done && <Check className="size-4" strokeWidth={3} />}
-        </span>
-      </button>
+    <li data-flip={`item-${item.id}`} className="flex items-center gap-1 bg-bg">
+      <Check round checked={done} label={done ? `Uncheck ${item.name}` : `Check ${item.name}`} animate={justChecked.has(item.id)}
+        onChange={(checked) => {
+          if (checked) { justChecked.add(item.id); window.setTimeout(() => justChecked.delete(item.id), 1000); }
+          check.mutate({ id: item.id, checked });
+        }} className="size-12" />
       <button onClick={onEdit} className="min-w-0 flex-1 py-2 text-left">
-        <p className={cx("truncate", done && "text-muted line-through")}>
+        <p className={cx("truncate transition-colors duration-300", done && "text-muted line-through")}>
           {qty && <span className="mr-1.5 font-semibold">{qty.replace(/^×/, "")}</span>}{item.name}
         </p>
         {(item.note || item.source === "lowStock" || (done && item.checkedBy)) && (

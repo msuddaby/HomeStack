@@ -49,3 +49,64 @@ input[type="date"] { -webkit-appearance: none; appearance: none; min-width: 0; d
 input[type="date"]::-webkit-date-and-time-value { text-align: left; }
 .pb-safe { padding-bottom: env(safe-area-inset-bottom); }
 .pt-safe { padding-top: env(safe-area-inset-top); }
+
+/* ---- Motion ----
+   One vocabulary for the whole app: things arrive with a soft overshoot, leave quickly, and never block a tap.
+   Everything here is switched off for people who ask their phone for less motion (bottom of this section). */
+@theme {
+  --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-soft: cubic-bezier(0.55, 0, 0.75, 0.15);
+  --ease-spring: linear(0, 0.009, 0.035 2.1%, 0.141 4.4%, 0.723 12.9%, 0.938 16.7%, 1.017 19.4%, 1.067, 1.099 24.3%,
+    1.108 26%, 1.100, 1.078 30.8%, 1.002 38.8%, 0.98 42.6%, 0.977 45.6%, 0.985 51.4%, 1.001 63.9%, 1.002 73%, 1);
+
+  --animate-fade-in: fade-in 180ms var(--ease-out-soft) both;
+  --animate-fade-out: fade-out 160ms var(--ease-in-soft) both;
+  --animate-sheet-in: sheet-in 380ms var(--ease-out-soft) both;
+  --animate-sheet-out: sheet-out 220ms var(--ease-in-soft) both;
+  --animate-dialog-in: dialog-in 260ms var(--ease-out-soft) both;
+  --animate-dialog-out: dialog-out 160ms var(--ease-in-soft) both;
+  --animate-toast-in: toast-in 420ms var(--ease-spring) both;
+  --animate-toast-out: toast-out 180ms var(--ease-in-soft) both;
+  --animate-pop: pop 360ms var(--ease-spring) both;
+  --animate-draw: draw 260ms 60ms var(--ease-out-soft) both;
+  --animate-collapse: collapse 280ms var(--ease-in-soft) both;
+  --animate-expand: expand 320ms var(--ease-out-soft) both;
+  --animate-rise: rise 320ms var(--ease-out-soft) both;
+
+  @keyframes fade-in { from { opacity: 0; } }
+  @keyframes fade-out { to { opacity: 0; } }
+  @keyframes sheet-in { from { transform: translateY(100%); } }
+  @keyframes sheet-out { to { transform: translateY(100%); } }
+  @keyframes dialog-in { from { opacity: 0; transform: translateY(12px) scale(0.97); } }
+  @keyframes dialog-out { to { opacity: 0; transform: scale(0.98); } }
+  @keyframes toast-in { from { opacity: 0; transform: translateY(24px) scale(0.96); } }
+  @keyframes toast-out { to { opacity: 0; transform: translateY(12px) scale(0.98); } }
+  @keyframes pop { 0% { transform: scale(0.6); } 100% { transform: scale(1); } }
+  @keyframes draw { from { stroke-dashoffset: 24; } to { stroke-dashoffset: 0; } }
+  /* Collapse/expand animate grid rows, so the content's own height is used. The child needs min-h-0 + overflow-hidden
+     (the `.motion-rows` helper below sets that up). */
+  @keyframes collapse { from { grid-template-rows: 1fr; opacity: 1; } to { grid-template-rows: 0fr; opacity: 0; } }
+  @keyframes expand { from { grid-template-rows: 0fr; opacity: 0; } to { grid-template-rows: 1fr; opacity: 1; } }
+  @keyframes rise { from { opacity: 0; transform: translateY(8px); } }
+}
+
+.motion-rows { display: grid; grid-template-rows: 1fr; }
+.motion-rows > * { min-height: 0; overflow: hidden; }
+
+/* Tap feedback: a quick press-in, like a native control. */
+.press { transition: transform 160ms var(--ease-out-soft), background-color 150ms, opacity 150ms; }
+.press:active:not(:disabled) { transform: scale(0.97); transition-duration: 60ms; }
+
+/* Page changes from the tab bar: a short crossfade with a little lift. */
+::view-transition-old(root) { animation: 120ms var(--ease-in-soft) both fade-out; }
+::view-transition-new(root) { animation: 260ms var(--ease-out-soft) both rise; }
+/* The tab bar and sidebar stay put while the page changes. */
+.vt-static { view-transition-name: chrome-nav; }
+.vt-static-side { view-transition-name: chrome-side; }
+::view-transition-group(chrome-nav), ::view-transition-group(chrome-side) { animation: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after, ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) {
+    animation-duration: 1ms !important; animation-delay: 0ms !important; transition-duration: 1ms !important;
+  }
+}
