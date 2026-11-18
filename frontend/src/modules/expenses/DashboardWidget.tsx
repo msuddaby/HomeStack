@@ -1,5 +1,5 @@
 import { Link } from "react-router";
-import { AlertTriangle, CalendarClock, HandCoins, Wallet } from "lucide-react";
+import { AlertTriangle, CalendarClock, HandCoins, Users, Wallet } from "lucide-react";
 import { shortDate, todayISO } from "@/core/dates";
 import { Card, cx } from "@/core/ui";
 import { useBalances, useSummary, useUpcoming, type Balance } from "./api";
@@ -23,54 +23,92 @@ export function ExpensesDashboardWidget() {
           )}
         </Card>
       )}
-      <Owed />
+      <YouOwe />
+      <OwedToOthers />
       <BillsDue />
       <DueList limit={4} />
     </>
   );
 }
 
-/** Every expense someone still owes for, and their portion, grouped by who owes whom. Hidden when nobody owes anything. */
-function Owed() {
+/** Just what you owe, and for what. Hidden when you're square. */
+function YouOwe() {
   const data = useBalances().data;
   const me = data?.myPersonId ?? null;
-  // Yours first: what you owe, then what's owed to you, then everyone else's.
-  const rank = (b: Balance) => (b.personId === me ? 0 : b.owedToPersonId === me ? 1 : 2);
-  const list = (data?.balances ?? []).filter((b) => b.outstanding > 0).sort((a, b) => rank(a) - rank(b));
-  if (!list.length) return null;
+  const mine = (data?.balances ?? []).filter((b) => me != null && b.personId === me && b.outstanding > 0);
+  if (!mine.length) return null;
+  const total = mine.reduce((s, b) => s + b.outstanding, 0);
   return (
-    <Card title={<span className="flex items-center gap-2"><HandCoins className="size-4 text-accent" />Owed</span>}
-      action={<Link to="/expenses/owed" className="text-xs text-accent">All →</Link>}>
-      <div className="flex flex-col gap-3">
-        {list.map((b) => {
-          const items = b.items.filter((i) => !i.receivedAt);
-          return (
-            <div key={`${b.personId}-${b.owedToPersonId}`}>
-              <p className="flex items-baseline gap-2 text-sm font-semibold">
-                <span className="min-w-0 flex-1 truncate">
-                  {b.personId === me ? "You owe" : `${b.person} owes`} {b.owedToPersonId === me ? "you" : b.owedTo}
-                </span>
-                <span className="tabular-nums">{money(b.outstanding)}</span>
-              </p>
-              <ul className="mt-0.5 flex flex-col text-sm">
-                {items.slice(0, MAX_OWED).map((i) => (
-                  <li key={i.shareId}>
-                    <Link to={`/expenses/receipts/${i.receiptId}`} className="flex items-center gap-2 py-1">
-                      <span className="min-w-0 flex-1 truncate">{i.what}</span>
-                      <span className="shrink-0 text-xs text-muted">{shortDate(i.date)}</span>
-                      <span className="w-16 shrink-0 text-right tabular-nums">{money(i.amount)}</span>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-              {items.length > MAX_OWED && (
-                <Link to="/expenses/owed" className="text-xs text-muted">+{items.length - MAX_OWED} more</Link>
-              )}
-            </div>
-          );
-        })}
+    <Card title={<span className="flex items-center gap-2"><HandCoins className="size-4 text-accent" />You owe</span>}
+      action={<Link to="/expenses/owed" className="text-xs text-accent">Details →</Link>}>
+      <p className="text-2xl font-bold tabular-nums">{money(total)}</p>
+      <div className="mt-3 flex flex-col gap-4">
+        {mine.map((b) => (
+          <div key={b.owedToPersonId}>
+            <p className="text-xs font-medium uppercase tracking-wide text-muted">
+              To {b.owedTo}{mine.length > 1 && <> · <span className="tabular-nums">{money(b.outstanding)}</span></>}
+            </p>
+            <OwedItems b={b} />
+          </div>
+        ))}
       </div>
     </Card>
+  );
+}
+
+/** Admins see every balance in the household; everyone else sees who owes them. Hidden when there's nothing. */
+function OwedToOthers() {
+  const data = useBalances().data;
+  const me = data?.myPersonId ?? null;
+  const admin = !!data?.canMarkReceived;
+  // Owed to you first, then everyone else's. Your own debts are in "You owe".
+  const list = (data?.balances ?? [])
+    .filter((b) => b.outstanding > 0 && b.personId !== me && (admin || b.owedToPersonId === me))
+    .sort((a, b) => Number(b.owedToPersonId === me) - Number(a.owedToPersonId === me) || b.outstanding - a.outstanding);
+  if (!list.length) return null;
+  const allMine = list.every((b) => b.owedToPersonId === me);
+  return (
+    <Card title={<span className="flex items-center gap-2"><Users className="size-4 text-accent" />{allMine ? "Owed to you" : "Who owes what"}</span>}
+      action={<Link to="/expenses/owed" className="text-xs text-accent">All →</Link>}>
+      <div className="flex flex-col divide-y divide-border">
+        {list.map((b) => (
+          <div key={`${b.personId}-${b.owedToPersonId}`} className="py-3 first:pt-0 last:pb-0">
+            <div className="flex items-baseline gap-2">
+              <p className="min-w-0 flex-1 truncate font-semibold">
+                {b.person} <span className="font-normal text-muted">owes</span> {b.owedToPersonId === me ? "you" : b.owedTo}
+              </p>
+              <span className="text-lg font-bold tabular-nums">{money(b.outstanding)}</span>
+            </div>
+            <OwedItems b={b} />
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+/** The expenses behind a balance that aren't paid back yet. */
+function OwedItems({ b }: { b: Balance }) {
+  const items = b.items.filter((i) => !i.receivedAt);
+  return (
+    <>
+      <ul className="mt-1.5 flex flex-col gap-0.5 rounded-xl bg-surface-2 px-3 py-1 text-sm">
+        {items.slice(0, MAX_OWED).map((i) => (
+          <li key={i.shareId}>
+            <Link to={`/expenses/receipts/${i.receiptId}`} className="flex items-center gap-3 py-1.5">
+              <span className="min-w-0 flex-1">
+                <span className="block truncate">{i.what}</span>
+                <span className="block text-xs text-muted">{shortDate(i.date)}</span>
+              </span>
+              <span className="shrink-0 tabular-nums">{money(i.amount)}</span>
+            </Link>
+          </li>
+        ))}
+      </ul>
+      {items.length > MAX_OWED && (
+        <Link to="/expenses/owed" className="mt-1 inline-block text-xs text-muted">+{items.length - MAX_OWED} more</Link>
+      )}
+    </>
   );
 }
 
