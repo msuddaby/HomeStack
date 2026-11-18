@@ -2,7 +2,15 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "./api";
 
 export type AiProviderKind = "openAiCompatible" | "anthropic";
-export interface AiSettings { configured: boolean; provider: AiProviderKind; baseUrl: string; hasApiKey: boolean; model: string; visionModel: string | null }
+export interface AiSettings {
+  /** AI can be used: the household's own connection, or one shared by the HomeStack admin. */
+  configured: boolean;
+  provider: AiProviderKind; baseUrl: string; hasApiKey: boolean; model: string; visionModel: string | null;
+  /** The household has its own connection (the fields above describe it). */
+  own: boolean;
+  /** Running on the HomeStack admin's shared AI: their name. */
+  sharedBy: string | null;
+}
 export interface AiTestResult { text: boolean; vision: boolean; model: string; visionModel: string | null; visionError: string | null }
 
 export const AI_KEY = ["ai-settings"];

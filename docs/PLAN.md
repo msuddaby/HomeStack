@@ -111,6 +111,11 @@ Modules may read each other through service functions (e.g. meal planning reads 
   is optional. Event notifications (`ExpenseNotifier`): "you owe" when a
   share is new or bigger (not to whoever made the change), a bill going overdue (once, to its payer or everyone), and an
   admin's "Remind" (once an hour per debt). Later: per-member choice of which notifications they get
+- ✅ Multiple households per instance (built 2026-11-17): the instance admin (`Admin:Usernames`, default `matt`) invites
+  new households by link (one use, expiring; only a hash is stored), renames them, resets passwords and deletes them
+  (`HouseholdDeleter` clears every table with a `HouseholdId`, so new modules are covered), but can't see their data.
+  `InstanceSettings.ShareAi` lets households without their own AI use the admin's. Backups are instance-admin only.
+  Later: household admins inviting their own members by link
 - Waste stats: money/items thrown out per month
 
 ### Future module ideas

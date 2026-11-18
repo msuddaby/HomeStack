@@ -47,6 +47,8 @@ public sealed class TestApp : WebApplicationFactory<Program>
         builder.UseSetting("BackgroundJobs:Enabled", "false");
         builder.UseSetting("Backup:Directory", BackupDir);
         builder.UseSetting("Backup:Keep", "3");
+        // The set-up user runs the instance (in real use: "matt").
+        builder.UseSetting("Admin:Usernames:0", "tester");
         builder.ConfigureServices(s => s.Replace(ServiceDescriptor.Singleton<TimeProvider>(Time)));
         builder.ConfigureTestServices(s =>
         {

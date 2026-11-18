@@ -56,18 +56,32 @@ public interface IAiProvider
 public class AiException(string message) : HomeStackException(Microsoft.AspNetCore.Http.StatusCodes.Status502BadGateway, message);
 
 /// <summary>What modules use: "ask the household's AI for JSON". Knows nothing about receipts or recipes.</summary>
-public class AiService(HomeStackDbContext db, ICurrentUser me, IEnumerable<IAiProvider> providers, ILogger<AiService> logger)
+public class AiService(HomeStackDbContext db, ICurrentUser me, IEnumerable<IAiProvider> providers, Admin.InstanceAdmin instance, ILogger<AiService> logger)
 {
     // Models sometimes write numbers as strings ("servings": "4").
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { NumberHandling = JsonNumberHandling.AllowReadingFromString };
 
+    /// <summary>The household's own AI connection (what Settings → AI edits), if it has one.</summary>
     public async Task<AiSettings?> GetSettingsAsync(CancellationToken ct = default) =>
         await db.Set<AiSettings>().SingleOrDefaultAsync(s => s.HouseholdId == me.HouseholdId, ct);
+
+    /// <summary>
+    /// What AI calls use: the household's own connection, or else the instance admin's household's when the admin
+    /// shares it (<see cref="Admin.InstanceSettings.ShareAi"/>). <c>SharedBy</c> names the admin for a shared one.
+    /// </summary>
+    public async Task<(AiSettings Settings, string? SharedBy)?> GetEffectiveAsync(CancellationToken ct = default)
+    {
+        if (await GetSettingsAsync(ct) is { } own) return (own, null);
+        if (!(await instance.SettingsAsync(ct)).ShareAi || await instance.MainHouseholdAsync(ct) is not { } main || main.Id == me.HouseholdId)
+            return null;
+        var shared = await db.Set<AiSettings>().AsNoTracking().SingleOrDefaultAsync(s => s.HouseholdId == main.Id, ct);
+        return shared is null ? null : (shared, main.AdminName);
+    }
 
     /// <summary>Asks for JSON and deserialises it. Retries once if the reply is blank or not JSON.</summary>
     public async Task<T> JsonAsync<T>(AiPrompt prompt, CancellationToken ct = default)
     {
-        var settings = await GetSettingsAsync(ct) ?? throw new BadRequestException("AI isn't set up yet. Add a provider in Settings → AI.");
+        var settings = (await GetEffectiveAsync(ct))?.Settings ?? throw new BadRequestException("AI isn't set up yet. Add a provider in Settings → AI.");
         return await JsonAsync<T>(settings, prompt, ct);
     }
 

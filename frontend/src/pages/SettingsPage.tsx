@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { Check, KeyRound, LogOut, Trash2, UserPlus } from "lucide-react";
+import { Check, ChevronRight, KeyRound, LogOut, Server, Trash2, UserPlus } from "lucide-react";
+import { Link } from "react-router";
 import { api, ApiError } from "@/core/api";
 import { useLogout, useMe } from "@/core/auth";
 import { PageHeader } from "@/core/layout";
@@ -18,11 +19,22 @@ export function SettingsPage() {
     <>
       <PageHeader title="Settings" subtitle={me.data?.household.name} />
       <div className="flex flex-col gap-4">
+        {me.data?.isInstanceAdmin && (
+          <Link to="/admin" className="flex items-center gap-3 rounded-2xl border border-border bg-surface p-4">
+            <Server className="size-5 text-accent" />
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-medium">Manage HomeStack</span>
+              <span className="block text-xs text-muted">Households on this server, invites, shared AI</span>
+            </span>
+            <ChevronRight className="size-4 text-muted" />
+          </Link>
+        )}
         <HouseholdMembers />
         <AiCard />
         <NotificationsCard />
         {modules.map((m) => m.Settings && <m.Settings key={m.id} />)}
-        <BackupsCard />
+        {/* Backups hold every household on the server. */}
+        {me.data?.isInstanceAdmin && <BackupsCard />}
         <Card title="Account">
           <p className="mb-3 text-sm text-muted">Signed in as <b className="text-text">{me.data?.user.username}</b></p>
           <div className="flex flex-wrap gap-2">

@@ -5,7 +5,11 @@ using Microsoft.AspNetCore.Routing;
 
 namespace HomeStack.Core.Ai;
 
-public record AiSettingsDto(bool Configured, AiProviderKind Provider, string BaseUrl, bool HasApiKey, string Model, string? VisionModel);
+/// <param name="Configured">AI can be used: the household's own connection, or a shared one.</param>
+/// <param name="Own">The household has its own connection (the rest of the fields describe it).</param>
+/// <param name="SharedBy">Running on the instance admin's shared AI: their name. Its details are never shown.</param>
+public record AiSettingsDto(bool Configured, AiProviderKind Provider, string BaseUrl, bool HasApiKey, string Model, string? VisionModel,
+    bool Own = false, string? SharedBy = null);
 
 /// <param name="ApiKey">null keeps the saved key, "" clears it.</param>
 public record AiSettingsRequest(
@@ -37,8 +41,12 @@ public static class AiEndpoints
     {
         var g = app.MapGroup("/api/ai").WithTags("AI").RequireAuthorization();
 
-        g.MapGet("/settings", async (AiService ai, CancellationToken ct) =>
-            await ai.GetSettingsAsync(ct) is { } s ? ToDto(s) : ToDto(new AiSettings(), configured: false));
+        g.MapGet("/settings", async (AiService ai, CancellationToken ct) => await ai.GetEffectiveAsync(ct) switch
+        {
+            ({ } own, null) => ToDto(own),
+            (_, { } sharedBy) => ToDto(new AiSettings(), configured: true) with { SharedBy = sharedBy },
+            _ => ToDto(new AiSettings(), configured: false),
+        });
 
         g.MapPut("/settings", async (AiSettingsRequest req, AiService ai, HomeStackDbContext db, ICurrentUser me, CancellationToken ct) =>
         {
@@ -89,6 +97,7 @@ public static class AiEndpoints
         s.VisionModel = string.IsNullOrWhiteSpace(req.VisionModel) ? null : req.VisionModel.Trim();
     }
 
-    private static AiSettingsDto ToDto(AiSettings s, bool configured = true) =>
-        new(configured, s.Provider, s.BaseUrl, s.ApiKey is not null, s.Model, s.VisionModel);
+    private static AiSettingsDto ToDto(AiSettings s) => new(true, s.Provider, s.BaseUrl, s.ApiKey is not null, s.Model, s.VisionModel, Own: true);
+    private static AiSettingsDto ToDto(AiSettings defaults, bool configured) =>
+        new(configured, defaults.Provider, defaults.BaseUrl, false, defaults.Model, defaults.VisionModel);
 }

@@ -1,5 +1,6 @@
 using System.Text.Json.Serialization;
 using HomeStack.Core.Auth;
+using HomeStack.Core.Admin;
 using HomeStack.Core.Ai;
 using HomeStack.Core.Data;
 using HomeStack.Core.Notifications;
@@ -31,6 +32,8 @@ public static class HomeStackExtensions
         services.AddScoped<HouseholdScope>();
         services.AddScoped<ICurrentUser, HttpCurrentUser>();
         services.AddScoped<DigestService>();
+        services.AddScoped<Admin.InstanceAdmin>();
+        services.AddScoped<Admin.HouseholdDeleter>();
         services.AddHttpClient<NtfyClient>(c => c.Timeout = TimeSpan.FromSeconds(10));
         services.AddScoped<PushService>();
         services.AddHttpClient<WebPushClient>(c => c.Timeout = TimeSpan.FromSeconds(10));
@@ -95,6 +98,7 @@ public static class HomeStackExtensions
     public static IEndpointRouteBuilder MapHomeStack(this IEndpointRouteBuilder app)
     {
         app.MapAuthEndpoints();
+        app.MapAdminEndpoints();
         app.MapNotificationEndpoints();
         app.MapAiEndpoints();
         app.MapImageEndpoints();

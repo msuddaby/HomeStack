@@ -83,7 +83,13 @@ public static class BackupEndpoints
 
     public static void MapBackupEndpoints(this IEndpointRouteBuilder app)
     {
-        var g = app.MapGroup("/api/system/backups").WithTags("System").RequireAuthorization();
+        // The whole instance (every household) is in a backup: only the instance admin sees or runs them.
+        var g = app.MapGroup("/api/system/backups").WithTags("System").RequireAuthorization()
+            .AddEndpointFilter(async (ctx, next) =>
+            {
+                await ctx.HttpContext.RequestServices.GetRequiredService<HomeStack.Core.Admin.InstanceAdmin>().RequireAsync(ctx.HttpContext.RequestAborted);
+                return await next(ctx);
+            });
         g.MapGet("/", (BackupService b) => b.List());
         g.MapPost("/", (BackupService b, CancellationToken ct) => b.RunAsync(ct));
     }

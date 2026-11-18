@@ -17,6 +17,62 @@ namespace HomeStack.Api.Migrations
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.15");
 
+            modelBuilder.Entity("HomeStack.Core.Admin.HouseholdInvite", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("CreatedByUserId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(80)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("RevokedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("UsedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("UsedForHouseholdId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique();
+
+                    b.HasIndex("UsedForHouseholdId");
+
+                    b.ToTable("household_invites", (string)null);
+                });
+
+            modelBuilder.Entity("HomeStack.Core.Admin.InstanceSettings", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("ShareAi")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("instance_settings", (string)null);
+                });
+
             modelBuilder.Entity("HomeStack.Core.Ai.AiSettings", b =>
                 {
                     b.Property<int>("HouseholdId")
@@ -1091,6 +1147,14 @@ namespace HomeStack.Api.Migrations
                     b.HasIndex("HouseholdId", "ProductId");
 
                     b.ToTable("shopping_items", (string)null);
+                });
+
+            modelBuilder.Entity("HomeStack.Core.Admin.HouseholdInvite", b =>
+                {
+                    b.HasOne("HomeStack.Core.Data.Household", null)
+                        .WithMany()
+                        .HasForeignKey("UsedForHouseholdId")
+                        .OnDelete(DeleteBehavior.SetNull);
                 });
 
             modelBuilder.Entity("HomeStack.Core.Ai.AiSettings", b =>

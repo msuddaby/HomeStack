@@ -267,10 +267,15 @@ export function AiCard() {
 
   return (
     <Card title={<span className="flex items-center gap-2"><Sparkles className="size-4" />AI</span>}
-      action={s.configured && <span className="text-xs font-medium text-accent">On</span>}>
+      action={s.configured && <span className="text-xs font-medium text-accent">{s.own ? "On" : "Shared"}</span>}>
       <p className="mb-3 text-sm text-muted">
         Reads receipts and typed lists into your inventory, and suggests meals from what you have. Use any provider; the key stays on this server and is only sent to the service you pick.
       </p>
+      {s.sharedBy && (
+        <p className="mb-3 rounded-xl bg-accent-soft p-3 text-sm">
+          You're using the AI shared by <b>{s.sharedBy}</b>, so receipts, bills and lists already work. Set up your own below to use that instead.
+        </p>
+      )}
       <form className="flex flex-col gap-3" onSubmit={(e) => { e.preventDefault(); save.mutate({}); }}>
         <div className="flex flex-wrap gap-1.5">
           {AI_PRESETS.map((p) => (
@@ -324,7 +329,7 @@ export function AiCard() {
         <div className="flex flex-wrap gap-2">
           <Button variant="primary" busy={save.isPending} disabled={!f.model.trim() || !f.baseUrl.trim()}>Save</Button>
           <Button type="button" busy={test.isPending} disabled={!f.model.trim() || !f.baseUrl.trim()} onClick={() => test.mutate()}>Test connection</Button>
-          {s.configured && <Button type="button" variant="ghost" busy={remove.isPending} onClick={() => remove.mutate()}>Turn off</Button>}
+          {s.own && <Button type="button" variant="ghost" busy={remove.isPending} onClick={() => remove.mutate()}>Turn off</Button>}
         </div>
       </form>
     </Card>

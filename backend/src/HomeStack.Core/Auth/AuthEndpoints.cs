@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using System.Security.Claims;
+using HomeStack.Core.Admin;
 using HomeStack.Core.Data;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -31,7 +32,8 @@ public record ChangePasswordRequest(
 public record UserDto(int Id, string Name, string Username, bool IsAdmin = false);
 public record SetAdminRequest(bool IsAdmin);
 public record HouseholdDto(int Id, string Name);
-public record MeDto(UserDto User, HouseholdDto Household);
+/// <param name="IsInstanceAdmin">Runs this HomeStack: can bring in and manage other households.</param>
+public record MeDto(UserDto User, HouseholdDto Household, bool IsInstanceAdmin = false);
 public record AuthStatusDto(bool NeedsSetup, bool Authenticated);
 
 public static class AuthEndpoints
@@ -45,28 +47,19 @@ public static class AuthEndpoints
 
         // First-run: create the household and its first user. Only allowed when no household exists.
         auth.MapPost("/setup", async (SetupRequest req, HomeStackDbContext db, IEnumerable<IModule> modules,
-            IPasswordHasher<User> hasher, HttpContext http, CancellationToken ct) =>
+            IPasswordHasher<User> hasher, InstanceAdmin admin, HttpContext http, CancellationToken ct) =>
         {
             if (await db.Households.AnyAsync(ct)) return Results.Conflict(new { error = "Already set up" });
 
             await using var tx = await db.Database.BeginTransactionAsync(ct);
-            var household = new Household { Name = req.HouseholdName.Trim() };
-            db.Households.Add(household);
-            await db.SaveChangesAsync(ct);
-
-            var user = NewUser(household.Id, req.Name, req.Username, req.Password, hasher);
-            user.IsAdmin = true;
-            db.Users.Add(user);
-            await db.SaveChangesAsync(ct);
-
-            foreach (var module in modules) await module.OnHouseholdCreatedAsync(db, household.Id, ct);
+            var (user, household) = await CreateHouseholdAsync(db, modules, hasher, req.HouseholdName, req.Name, req.Username, req.Password, ct);
             await tx.CommitAsync(ct);
 
             await SignIn(http, user);
-            return Results.Ok(ToMe(user, household));
+            return Results.Ok(ToMe(user, household, admin));
         }).Validate<SetupRequest>().RequireRateLimiting(LoginRateLimit.Policy);
 
-        auth.MapPost("/login", async (LoginRequest req, HomeStackDbContext db, IPasswordHasher<User> hasher, HttpContext http) =>
+        auth.MapPost("/login", async (LoginRequest req, HomeStackDbContext db, IPasswordHasher<User> hasher, InstanceAdmin admin, HttpContext http) =>
         {
             var username = req.Username.Trim().ToLowerInvariant();
             var user = await db.Users.Include(u => u.Household).SingleOrDefaultAsync(u => u.Username == username);
@@ -74,7 +67,7 @@ public static class AuthEndpoints
                 return Results.Problem("Invalid username or password", statusCode: StatusCodes.Status401Unauthorized);
 
             await SignIn(http, user);
-            return Results.Ok(ToMe(user, user.Household!));
+            return Results.Ok(ToMe(user, user.Household!, admin));
         }).Validate<LoginRequest>().RequireRateLimiting(LoginRateLimit.Policy);
 
         auth.MapPost("/password", async (ChangePasswordRequest req, ICurrentUser me, HomeStackDbContext db, IPasswordHasher<User> hasher) =>
@@ -93,10 +86,10 @@ public static class AuthEndpoints
             return Results.NoContent();
         });
 
-        auth.MapGet("/me", async (ICurrentUser me, HomeStackDbContext db) =>
+        auth.MapGet("/me", async (ICurrentUser me, HomeStackDbContext db, InstanceAdmin admin) =>
         {
             var user = await db.Users.Include(u => u.Household).SingleOrDefaultAsync(u => u.Id == me.UserId);
-            return user is null ? Results.Unauthorized() : Results.Ok(ToMe(user, user.Household!));
+            return user is null ? Results.Unauthorized() : Results.Ok(ToMe(user, user.Household!, admin));
         }).RequireAuthorization();
 
         var household = app.MapGroup("/api/household").WithTags("Household").RequireAuthorization();
@@ -118,11 +111,9 @@ public static class AuthEndpoints
             return new UserDto(user.Id, user.Name, user.Username, user.IsAdmin);
         });
 
-        household.MapPost("/users", async (CreateUserRequest req, ICurrentUser me, HomeStackDbContext db, IPasswordHasher<User> hasher) =>
+        household.MapPost("/users", async (CreateUserRequest req, ICurrentUser me, HomeStackDbContext db, IPasswordHasher<User> hasher, InstanceAdmin admin) =>
         {
-            var username = req.Username.Trim().ToLowerInvariant();
-            if (await db.Users.AnyAsync(u => u.Username == username))
-                return Results.ValidationProblem(new Dictionary<string, string[]> { ["username"] = ["Username is taken."] });
+            if (await UsernameProblemAsync(db, admin, req.Username) is { } problem) return problem;
 
             var user = NewUser(me.HouseholdId, req.Name, req.Username, req.Password, hasher);
             db.Users.Add(user);
@@ -144,6 +135,31 @@ public static class AuthEndpoints
         });
     }
 
+    /// <summary>A validation problem if the username is taken or reserved for the instance admin; otherwise null.</summary>
+    internal static async Task<IResult?> UsernameProblemAsync(HomeStackDbContext db, InstanceAdmin admin, string username)
+    {
+        var u = username.Trim().ToLowerInvariant();
+        var error = admin.IsAdminUsername(u) ? "That username is reserved." : await db.Users.AnyAsync(x => x.Username == u) ? "Username is taken." : null;
+        return error is null ? null : Results.ValidationProblem(new Dictionary<string, string[]> { ["username"] = [error] });
+    }
+
+    /// <summary>A new household with its first member as admin, set up by every module. Call inside a transaction.</summary>
+    internal static async Task<(User User, Household Household)> CreateHouseholdAsync(HomeStackDbContext db, IEnumerable<IModule> modules,
+        IPasswordHasher<User> hasher, string householdName, string name, string username, string password, CancellationToken ct)
+    {
+        var household = new Household { Name = householdName.Trim() };
+        db.Households.Add(household);
+        await db.SaveChangesAsync(ct);
+
+        var user = NewUser(household.Id, name, username, password, hasher);
+        user.IsAdmin = true;
+        db.Users.Add(user);
+        await db.SaveChangesAsync(ct);
+
+        foreach (var module in modules) await module.OnHouseholdCreatedAsync(db, household.Id, ct);
+        return (user, household);
+    }
+
     private static User NewUser(int householdId, string name, string username, string password, IPasswordHasher<User> hasher)
     {
         var user = new User { HouseholdId = householdId, Name = name.Trim(), Username = username.Trim().ToLowerInvariant() };
@@ -151,7 +167,7 @@ public static class AuthEndpoints
         return user;
     }
 
-    private static Task SignIn(HttpContext http, User user)
+    internal static Task SignIn(HttpContext http, User user)
     {
         var identity = new ClaimsIdentity(
         [
@@ -163,5 +179,6 @@ public static class AuthEndpoints
             new AuthenticationProperties { IsPersistent = true });
     }
 
-    private static MeDto ToMe(User u, Household h) => new(new UserDto(u.Id, u.Name, u.Username, u.IsAdmin), new HouseholdDto(h.Id, h.Name));
+    internal static MeDto ToMe(User u, Household h, InstanceAdmin admin) =>
+        new(new UserDto(u.Id, u.Name, u.Username, u.IsAdmin), new HouseholdDto(h.Id, h.Name), admin.IsAdminUsername(u.Username));
 }
