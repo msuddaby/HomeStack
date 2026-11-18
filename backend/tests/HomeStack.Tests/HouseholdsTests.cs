@@ -212,25 +212,45 @@ public class HouseholdsTests
     }.ToJsonString();
 
     [Fact]
-    public async Task The_admin_can_share_their_AI_with_households_that_have_none()
+    public async Task The_admin_chooses_which_households_share_their_AI()
     {
         using var app = new TestApp();
-        var (admin, smith, _) = await TwoHouseholds(app);
+        var (admin, smith, smithMe) = await TwoHouseholds(app);
+        var jonesInvite = await (await admin.Post("/api/admin/invites", new { })).Read<NewInviteDto>();
+        var jones = app.CreateClient();
+        var jonesMe = await (await jones.Post("/api/auth/join", new
+        {
+            token = jonesInvite.Token, householdName = "Joneses", name = "Jo Jones", username = "jones", password = "password123",
+        })).Read<MeDto>();
+        var mine = (await (await admin.GetAsync("/api/auth/me")).Read<MeDto>()).Household.Id;
+        Task<HttpResponseMessage> Share(int household, bool shared) =>
+            admin.PutAsJsonAsync($"/api/admin/households/{household}/shared-ai", new { shared }, TestApp.Json);
+        async Task<AiSettingsDto> Ai(HttpClient c) => await (await c.GetAsync("/api/ai/settings")).Read<AiSettingsDto>();
+
+        Assert.Equal(new InstanceSettingsDto("Test Home", false), await (await admin.GetAsync("/api/admin/settings")).Read<InstanceSettingsDto>());
         (await admin.PutAsJsonAsync("/api/ai/settings", new { provider = "anthropic", baseUrl = "https://api.anthropic.com", apiKey = "sk-ant-main", model = "claude-x" }, TestApp.Json))
             .EnsureSuccessStatusCode();
+        Assert.True((await (await admin.GetAsync("/api/admin/settings")).Read<InstanceSettingsDto>()).MainHasAi);
         var read = new { text = "a dozen eggs" };
         string Reply() => AnthropicReply("""{"items": [{"name": "Eggs", "category": "eggs", "location": "fridge", "quantity": 12}]}""");
 
-        Assert.False((await (await smith.GetAsync("/api/ai/settings")).Read<AiSettingsDto>()).Configured);
+        Assert.False((await Ai(smith)).Configured);
         Assert.Equal(HttpStatusCode.BadRequest, (await smith.Post("/api/inventory/read/text", read)).StatusCode);
 
-        var shared = await (await admin.PutAsJsonAsync("/api/admin/settings", new { shareAi = true }, TestApp.Json)).Read<InstanceSettingsDto>();
-        Assert.Equal((true, "Test Home"), (shared.ShareAi, shared.MainHousehold));
+        // Shared with the Smiths only.
+        (await Share(smithMe.Household.Id, true)).EnsureSuccessStatusCode();
+        Assert.Equal(HttpStatusCode.BadRequest, (await Share(mine, true)).StatusCode); // your own already uses it
+        Assert.Equal(HttpStatusCode.Forbidden, (await smith.PutAsJsonAsync($"/api/admin/households/{jonesMe.Household.Id}/shared-ai", new { shared = true }, TestApp.Json)).StatusCode);
+        var households = await (await admin.GetAsync("/api/admin/households")).Read<List<AdminHouseholdDto>>();
+        Assert.Equal([("Joneses", false), ("Smiths", true), ("Test Home", false)], households.Select(h => (h.Name, h.SharedAi)));
+
         var settingsJson = await (await smith.GetAsync("/api/ai/settings")).Content.ReadAsStringAsync();
         Assert.DoesNotContain("sk-ant", settingsJson);
         Assert.DoesNotContain("claude-x", settingsJson);
-        var settings = await (await smith.GetAsync("/api/ai/settings")).Read<AiSettingsDto>();
+        var settings = await Ai(smith);
         Assert.Equal((true, false, "Tester", false), (settings.Configured, settings.Own, settings.SharedBy, settings.HasApiKey));
+        Assert.False((await Ai(jones)).Configured);
+        Assert.Equal(HttpStatusCode.BadRequest, (await jones.Post("/api/inventory/read/text", read)).StatusCode);
 
         app.Ai.Bodies.Enqueue(Reply());
         (await smith.Post("/api/inventory/read/text", read)).EnsureSuccessStatusCode();
@@ -239,13 +259,15 @@ public class HouseholdsTests
         // Their own settings win; testing a connection never borrows the shared key.
         (await smith.PutAsJsonAsync("/api/ai/settings", new { provider = "anthropic", baseUrl = "https://api.anthropic.com", apiKey = "sk-ant-smith", model = "claude-y" }, TestApp.Json))
             .EnsureSuccessStatusCode();
-        Assert.True((await (await smith.GetAsync("/api/ai/settings")).Read<AiSettingsDto>()).Own);
+        Assert.True((await Ai(smith)).Own);
         app.Ai.Bodies.Enqueue(Reply());
         (await smith.Post("/api/inventory/read/text", read)).EnsureSuccessStatusCode();
         Assert.Equal("sk-ant-smith", app.Ai.Requests.Last().Request.Headers.GetValues("x-api-key").Single());
 
+        // Stop sharing: back to no AI once their own is gone too.
         (await smith.DeleteAsync("/api/ai/settings")).EnsureSuccessStatusCode();
-        (await admin.PutAsJsonAsync("/api/admin/settings", new { shareAi = false }, TestApp.Json)).EnsureSuccessStatusCode();
-        Assert.False((await (await smith.GetAsync("/api/ai/settings")).Read<AiSettingsDto>()).Configured);
+        Assert.True((await Ai(smith)).Configured);
+        (await Share(smithMe.Household.Id, false)).EnsureSuccessStatusCode();
+        Assert.False((await Ai(smith)).Configured);
     }
 }

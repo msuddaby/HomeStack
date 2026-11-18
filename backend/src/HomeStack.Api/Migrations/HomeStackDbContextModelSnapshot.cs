@@ -60,19 +60,6 @@ namespace HomeStack.Api.Migrations
                     b.ToTable("household_invites", (string)null);
                 });
 
-            modelBuilder.Entity("HomeStack.Core.Admin.InstanceSettings", b =>
-                {
-                    b.Property<int>("Id")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<bool>("ShareAi")
-                        .HasColumnType("INTEGER");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("instance_settings", (string)null);
-                });
-
             modelBuilder.Entity("HomeStack.Core.Ai.AiSettings", b =>
                 {
                     b.Property<int>("HouseholdId")
@@ -119,6 +106,9 @@ namespace HomeStack.Api.Migrations
                         .IsRequired()
                         .HasMaxLength(80)
                         .HasColumnType("TEXT");
+
+                    b.Property<bool>("UseSharedAi")
+                        .HasColumnType("INTEGER");
 
                     b.HasKey("Id");
 

@@ -114,7 +114,7 @@ Modules may read each other through service functions (e.g. meal planning reads 
 - ✅ Multiple households per instance (built 2026-11-17): the instance admin (`Admin:Usernames`, default `matt`) invites
   new households by link (one use, expiring; only a hash is stored), renames them, resets passwords and deletes them
   (`HouseholdDeleter` clears every table with a `HouseholdId`, so new modules are covered), but can't see their data.
-  `InstanceSettings.ShareAi` lets households without their own AI use the admin's. Backups are instance-admin only.
+  The admin picks households to share their AI with (`Household.UseSharedAi`; used only while a household has none of its own). Backups are instance-admin only.
   Later: household admins inviting their own members by link
 - Waste stats: money/items thrown out per month
 

@@ -9,20 +9,6 @@ namespace HomeStack.Core.Admin;
 // One HomeStack can hold several households. The instance admin (config Admin:Usernames, "matt" by default) brings
 // new ones in with invite links and manages them — names, members' passwords, deleting — without seeing their data.
 
-/// <summary>Instance-wide settings (one row).</summary>
-public class InstanceSettings
-{
-    public int Id { get; set; } = 1;
-    /// <summary>Households without their own AI provider use the instance admin's household's.</summary>
-    public bool ShareAi { get; set; }
-
-    internal static void Configure(ModelBuilder mb) => mb.Entity<InstanceSettings>(e =>
-    {
-        e.ToTable("instance_settings");
-        e.Property(x => x.Id).ValueGeneratedNever();
-    });
-}
-
 /// <summary>A link that lets one person create a new household and its first (admin) account.</summary>
 public class HouseholdInvite
 {
@@ -89,9 +75,6 @@ public class InstanceAdmin(HomeStackDbContext db, ICurrentUser me, IConfiguratio
             .Select(u => new { u.HouseholdId, Household = u.Household!.Name, u.Name }).FirstOrDefaultAsync(ct);
         return admin is null ? null : (admin.HouseholdId, admin.Household, admin.Name);
     }
-
-    public async Task<InstanceSettings> SettingsAsync(CancellationToken ct = default) =>
-        await db.Set<InstanceSettings>().SingleOrDefaultAsync(ct) ?? new InstanceSettings();
 }
 
 /// <summary>

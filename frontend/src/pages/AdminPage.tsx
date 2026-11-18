@@ -7,10 +7,16 @@ import { useMe } from "@/core/auth";
 import { PageHeader } from "@/core/layout";
 import { Button, Card, Chip, cx, Empty, ErrorText, Field, Input, Select, Sheet, Spinner } from "@/core/ui";
 
-interface AdminHousehold { id: number; name: string; createdAt: string; members: number; admins: string[]; ownAi: boolean; isMine: boolean }
+interface AdminHousehold {
+  id: number; name: string; createdAt: string; members: number; admins: string[]; isMine: boolean;
+  /** Has its own AI (used even when sharing is on). */
+  ownAi: boolean;
+  /** You share your AI with it. */
+  sharedAi: boolean;
+}
 interface AdminUser { id: number; name: string; username: string; isAdmin: boolean }
 interface Invite { id: number; note: string | null; createdAt: string; expiresAt: string; usedAt: string | null; household: string | null; revokedAt: string | null }
-interface InstanceSettings { shareAi: boolean; mainHousehold: string | null }
+interface InstanceSettings { mainHousehold: string | null; mainHasAi: boolean }
 
 const HOUSEHOLDS = ["admin", "households"];
 const INVITES = ["admin", "invites"];
@@ -38,7 +44,6 @@ export function AdminPage() {
 
 function Households() {
   const households = useQuery({ queryKey: HOUSEHOLDS, queryFn: () => api<AdminHousehold[]>("/admin/households") });
-  const settings = useQuery({ queryKey: SETTINGS, queryFn: () => api<InstanceSettings>("/admin/settings") });
   const [open, setOpen] = useState<AdminHousehold | null>(null);
   return (
     <Card title="Households">
@@ -52,7 +57,7 @@ function Households() {
                   <p className="flex items-center gap-2 truncate text-sm font-medium">{h.name}{h.isMine && <Chip tone="accent">Yours</Chip>}</p>
                   <p className="truncate text-xs text-muted">
                     {h.members} {h.members === 1 ? "member" : "members"} · admin {h.admins.join(", ") || "none"} ·{" "}
-                    {h.ownAi ? "own AI" : settings.data?.shareAi && !h.isMine ? "shared AI" : "no AI"}
+                    {h.ownAi ? "own AI" : h.sharedAi ? "your AI" : h.isMine ? "no AI yet" : "no AI"}
                   </p>
                 </div>
                 <ChevronRight className="size-4 shrink-0 text-muted" />
@@ -244,29 +249,48 @@ function Invites() {
   );
 }
 
-/** Lets households without their own AI use the admin's. */
+/** Pick which households can use the admin's AI (while they have none of their own). */
 function SharedAi() {
   const qc = useQueryClient();
   const settings = useQuery({ queryKey: SETTINGS, queryFn: () => api<InstanceSettings>("/admin/settings") });
-  const save = useMutation({
-    mutationFn: (shareAi: boolean) => api<InstanceSettings>("/admin/settings", { method: "PUT", body: { shareAi } }),
-    onSuccess: (s) => { qc.setQueryData(SETTINGS, s); qc.invalidateQueries({ queryKey: HOUSEHOLDS }); },
+  const households = useQuery({ queryKey: HOUSEHOLDS, queryFn: () => api<AdminHousehold[]>("/admin/households") });
+  const share = useMutation({
+    mutationFn: ({ id, shared }: { id: number; shared: boolean }) => api(`/admin/households/${id}/shared-ai`, { method: "PUT", body: { shared } }),
+    // Tick straight away; the list is refetched to confirm.
+    onMutate: ({ id, shared }) => qc.setQueryData<AdminHousehold[]>(HOUSEHOLDS, (list) => list?.map((h) => (h.id === id ? { ...h, sharedAi: shared } : h))),
+    onSettled: () => qc.invalidateQueries({ queryKey: HOUSEHOLDS }),
   });
   const s = settings.data;
+  const others = (households.data ?? []).filter((h) => !h.isMine);
   return (
     <Card title={<span className="flex items-center gap-2"><Sparkles className="size-4" />Shared AI</span>}>
-      {!s ? <Spinner /> : (
+      {!s || !households.data ? <Spinner /> : (
         <>
-          <label className="flex items-start gap-2 text-sm">
-            <input type="checkbox" checked={s.shareAi} disabled={save.isPending} onChange={(e) => save.mutate(e.target.checked)}
-              className="mt-0.5 size-4 shrink-0 accent-[var(--color-accent)]" />
-            <span>Share {s.mainHousehold ? <b>{s.mainHousehold}</b> : "your household"}'s AI with every household that hasn't set up its own</span>
-          </label>
+          <p className="text-sm">Let these households use {s.mainHousehold ? <b>{s.mainHousehold}</b> : "your household"}'s AI:</p>
+          {!s.mainHasAi && (
+            <p className="mt-2 rounded-xl bg-surface-2 p-3 text-sm">Set up AI for your own household in Settings first; until then there's nothing to share.</p>
+          )}
+          {others.length === 0 ? (
+            <p className="mt-2 text-sm text-muted">No other households yet. Make an invite above.</p>
+          ) : (
+            <ul className="mt-1 divide-y divide-border">
+              {others.map((h) => (
+                <li key={h.id}>
+                  <label className="flex items-center gap-3 py-2.5 text-sm">
+                    <input type="checkbox" checked={h.sharedAi} onChange={(e) => share.mutate({ id: h.id, shared: e.target.checked })}
+                      className="size-5 shrink-0 accent-[var(--color-accent)]" />
+                    <span className="min-w-0 flex-1 truncate">{h.name}</span>
+                    {h.ownAi && <Chip>Has its own</Chip>}
+                  </label>
+                </li>
+              ))}
+            </ul>
+          )}
           <p className="mt-2 text-xs text-muted">
             They can read receipts, bills and lists with it, but never see its key or settings. What they use is billed to your AI account.
-            A household that adds its own AI in Settings uses that instead.
+            A household with its own AI ("Has its own") uses that instead, even if ticked.
           </p>
-          {save.error && <p className="mt-2 text-sm text-danger">{errorMessage(save.error)}</p>}
+          {share.error && <p className="mt-2 text-sm text-danger">{errorMessage(share.error)}</p>}
         </>
       )}
     </Card>
