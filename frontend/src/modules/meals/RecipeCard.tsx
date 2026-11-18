@@ -6,7 +6,7 @@ import { minutes } from "./format";
 
 export function RecipeCard({ r, showMissing }: { r: RecipeSummary; showMissing?: boolean }) {
   return (
-    <Link to={`/meals/recipes/${r.id}`} className="press flex gap-3 rounded-2xl border border-border bg-surface p-2.5 transition-colors hover:bg-surface-2 active:bg-surface-2">
+    <Link to={`/meals/recipes/${r.id}`} className="press flex min-w-0 gap-3 rounded-2xl border border-border bg-surface p-2.5 transition-colors hover:bg-surface-2 active:bg-surface-2">
       {r.image
         ? <img src={r.image} alt="" loading="lazy" className="size-20 shrink-0 rounded-xl object-cover" />
         : <span className="flex size-20 shrink-0 items-center justify-center rounded-xl bg-surface-2 text-3xl">🍽️</span>}
