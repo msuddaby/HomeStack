@@ -59,6 +59,9 @@ export function ReceiptPage() {
             {preparing ? "Preparing…" : addPhotos.isPending ? "Uploading…" : r.images.length ? "Add photo" : "Attach photo"}
           </PhotoButton>
         )}
+        {r.document && r.source !== "bill" && !r.dueDate && (
+          <a href={r.document} target="_blank" rel="noreferrer"><Button><FileText className="size-4" />Open PDF</Button></a>
+        )}
         <Button variant="ghost" onClick={() => setConfirming(true)}><Trash2 className="size-4" />Delete</Button>
       </div>
       {photoError && <p className="text-sm text-danger">{photoError}</p>}

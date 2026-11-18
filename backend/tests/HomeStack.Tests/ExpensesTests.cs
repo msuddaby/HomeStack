@@ -368,6 +368,39 @@ public class ExpensesTests
     }
 
     [Fact]
+    public async Task An_online_order_PDF_is_read_like_a_receipt_and_kept()
+    {
+        using var app = new TestApp();
+        var c = await StartWithAi(app);
+        app.Ai.Bodies.Enqueue(OpenAiReply(new
+        {
+            store = "Walmart", date = app.Today.ToString("yyyy-MM-dd"), total = 12.49,
+            lines = new object[] { new { name = "Paper towels", amount = 12.49, category = "household", food = false } },
+        }));
+        var pdf = SplitsAndBillsTests.Pdf();
+        var draft = await (await c.PostAsync("/api/expenses/read", SplitsAndBillsTests.Upload(pdf, "images", "order.pdf", "application/pdf")))
+            .Read<ReceiptDraftDto>();
+
+        // The page went to the AI as an image, with a note that it's an online order.
+        var body = app.Ai.Requests[^1].Body;
+        Assert.Contains("image/jpeg", body);
+        Assert.Contains("online order", body);
+        Assert.Equal(("Walmart", "Paper towels"), (draft.Store, draft.Lines.Single().Name));
+
+        // Saved with the PDF attached as its original.
+        var saved = await (await c.Post("/api/expenses/receipts", Receipt("Walmart", app.Today, 12.49m, Line("Paper towels", 12.49m)))).Read<ReceiptDto>();
+        var withPdf = await (await c.PostAsync($"/api/expenses/receipts/{saved.Id}/document",
+            SplitsAndBillsTests.Upload(pdf, "file", "order.pdf", "application/pdf"))).Read<ReceiptDto>();
+        Assert.Equal("application/pdf", (await c.GetAsync(withPdf.Document)).Content.Headers.ContentType?.MediaType);
+
+        // A broken PDF or a non-image is refused.
+        Assert.Equal(HttpStatusCode.BadRequest, (await c.PostAsync("/api/expenses/read",
+            SplitsAndBillsTests.Upload("%PDF-1.4 broken"u8.ToArray(), "images", "x.pdf", "application/pdf"))).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await c.PostAsync("/api/expenses/read",
+            SplitsAndBillsTests.Upload("hello"u8.ToArray(), "images", "x.txt", "text/plain"))).StatusCode);
+    }
+
+    [Fact]
     public async Task Bad_requests_are_refused()
     {
         using var app = new TestApp();

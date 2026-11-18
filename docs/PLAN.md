@@ -85,6 +85,7 @@ Modules may read each other through service functions (e.g. meal planning reads 
 - `expenses` module ("Spending"): stores, receipts, receipt lines, tracked items and each store's item numbers for them
 - One receipt scanner (from Spending or Inventory → Add → Scan receipt): every line with item number, quantity, price and
   discount, plus store, tax and total; food lines can go into inventory in the same save (one transaction); receipt photos kept.
+  Online orders: upload the PDF receipt instead (first 4 pages read; skipped/out-of-stock items left out); the PDF is kept.
   Unticking "Put away" is remembered per item (a case of pop is tracked as spending, not inventory); "Snacks & drinks" category
 - Same store + item number links to the same item automatically; across stores the AI suggests "same as X?" and the user confirms.
   Items can also be combined by hand ("Same as another item…")

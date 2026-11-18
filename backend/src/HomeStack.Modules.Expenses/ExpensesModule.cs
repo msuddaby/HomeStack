@@ -116,22 +116,31 @@ public class ExpensesModule : IModule
     {
         g.MapGet("/categories", () => ExpenseCategories.All);
 
-        // Read receipt photos into a draft to review (nothing saved).
+        // Read receipt photos, or a PDF (an online order's receipt), into a draft to review (nothing saved).
         g.MapPost("/read", async (IFormFileCollection files, ReceiptReader reader, CancellationToken ct) =>
         {
-            var photos = files.GetFiles("images");
-            if (photos.Count is 0 or > ReceiptReader.MaxImages)
-                throw new BadRequestException($"Send 1 to {ReceiptReader.MaxImages} photos.");
+            var uploads = files.GetFiles("images");
+            if (uploads.Count is 0 or > ReceiptReader.MaxImages)
+                throw new BadRequestException($"Send a PDF or 1 to {ReceiptReader.MaxImages} photos.");
             var list = new List<AiImage>();
-            foreach (var f in photos)
+            var pdf = false;
+            foreach (var f in uploads)
             {
-                if (!ReceiptReader.ImageTypes.Contains(f.ContentType)) throw new BadRequestException("Photos must be JPEG, PNG or WebP.");
-                if (f.Length > ReceiptReader.MaxImageBytes) throw new BadRequestException("Each photo must be under 8 MB.");
+                if (f.Length > BillsService.MaxFileBytes) throw new BadRequestException("Files must be under 15 MB.");
                 using var ms = new MemoryStream();
                 await f.CopyToAsync(ms, ct);
-                list.Add(new(ms.ToArray(), f.ContentType));
+                var data = ms.ToArray();
+                if (Pdf.Looks(data))
+                {
+                    pdf = true;
+                    list.AddRange(Pdf.RenderPages(data).Select(p => new AiImage(p, "image/jpeg")));
+                    continue;
+                }
+                if (!ReceiptReader.ImageTypes.Contains(f.ContentType)) throw new BadRequestException("Receipts must be a PDF, or JPEG, PNG or WebP photos.");
+                if (f.Length > ReceiptReader.MaxImageBytes) throw new BadRequestException("Each photo must be under 8 MB.");
+                list.Add(new(data, f.ContentType));
             }
-            return await reader.ReadAsync(list, ct);
+            return await reader.ReadAsync(list.Take(ReceiptReader.MaxImages).ToList(), pdf, ct);
         }).DisableAntiforgery();
 
         // Receipts

@@ -35,7 +35,7 @@ public class SplitsAndBillsTests
     private static object Part(int personId, double weight = 1) => new { personId, weight };
 
     /// <summary>A tiny one-page PDF with some text.</summary>
-    private static byte[] Pdf()
+    internal static byte[] Pdf()
     {
         var objects = new[]
         {
@@ -59,7 +59,7 @@ public class SplitsAndBillsTests
         return Encoding.ASCII.GetBytes(sb.ToString());
     }
 
-    private static MultipartFormDataContent Upload(byte[] data, string field, string name, string type)
+    internal static MultipartFormDataContent Upload(byte[] data, string field, string name, string type)
     {
         var file = new ByteArrayContent(data);
         file.Headers.ContentType = new MediaTypeHeaderValue(type);

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router";
-import { Camera, Check, ImagePlus, Link2, Sparkles, X } from "lucide-react";
+import { Camera, Check, FileText, ImagePlus, Link2, Sparkles, X } from "lucide-react";
 import { shrinkImage, useAiSettings } from "@/core/ai";
 import { errorMessage } from "@/core/api";
 import { todayISO } from "@/core/dates";
@@ -8,7 +8,7 @@ import { useToast } from "@/core/toast";
 import { Button, Chip, cx, ErrorText, Field, Input, PhotoButton, Select, Sheet, Spinner } from "@/core/ui";
 import { useCategories, useLocations, type AddItem, type Category, type Location, type Product } from "@/modules/inventory/api";
 import { suggestExpiry } from "@/modules/inventory/logic";
-import { readReceipt, useAddReceiptPhotos, useExpenseCategories, usePeople, useSaveReceipt, type DraftLine, type ItemRef, type PackSource, type Person, type ReceiptDraft } from "./api";
+import { readReceipt, useAddReceiptPhotos, useAttachDocument, useExpenseCategories, usePeople, useSaveReceipt, type DraftLine, type ItemRef, type PackSource, type Person, type ReceiptDraft } from "./api";
 import { money } from "./format";
 import { noSplit, PeopleChips, SplitEditor, toParts, type SplitValue } from "./Split";
 
@@ -34,7 +34,7 @@ const num = (s: string) => { const n = Number(s.replace(/[$,\s]/g, "")); return 
 const round3 = (n: number) => String(Math.round(n * 1000) / 1000);
 
 /**
- * Receipt photos → AI → review every line (price, item number, discount; food can go straight into inventory) → save.
+ * Receipt photos or a PDF (an online order) → AI → review every line (price, item number, discount; food can go straight into inventory) → save.
  * The one receipt scanner: used from Spending and from Inventory's "Scan receipt".
  */
 export function ScanReceiptSheet({ open, onClose, onBack }: { open: boolean; onClose: () => void; onBack?: () => void }) {
@@ -45,10 +45,13 @@ export function ScanReceiptSheet({ open, onClose, onBack }: { open: boolean; onC
   const foodCatById = useMemo(() => new Map(foodCats.map((c) => [c.id, c])), [foodCats]);
   const save = useSaveReceipt();
   const addPhotos = useAddReceiptPhotos();
+  const attach = useAttachDocument();
   const toast = useToast();
   const navigate = useNavigate();
 
   const [photos, setPhotos] = useState<{ blob: Blob; url: string }[]>([]);
+  /** An online order's PDF receipt, read instead of photos and kept with the receipt. */
+  const [pdf, setPdf] = useState<{ blob: Blob; name: string } | null>(null);
   const [preparing, setPreparing] = useState(false);
   const [reading, setReading] = useState(false);
   const [error, setError] = useState<unknown>(null);
@@ -64,7 +67,7 @@ export function ScanReceiptSheet({ open, onClose, onBack }: { open: boolean; onC
 
   useEffect(() => {
     if (!open) return;
-    setPhotos([]); setDraft(null); setRows([]); setError(null); setStore(""); setDate(todayISO()); setTotal(""); setTax("");
+    setPhotos([]); setPdf(null); setDraft(null); setRows([]); setError(null); setStore(""); setDate(todayISO()); setTotal(""); setTax("");
     setSplit(noSplit(myId));
     save.reset();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -92,11 +95,20 @@ export function ScanReceiptSheet({ open, onClose, onBack }: { open: boolean; onC
     } catch (e) { setError(e); } finally { setPreparing(false); }
   }
 
+  async function pickPdf(files: File[]) {
+    const file = files[0];
+    if (!file) return;
+    setError(null);
+    setPhotos([]);
+    setPdf({ blob: new Blob([await file.arrayBuffer()], { type: "application/pdf" }), name: file.name || "receipt.pdf" });
+  }
+
   async function read() {
     setReading(true); setError(null);
     try {
       const form = new FormData();
-      photos.forEach((p) => form.append("images", p.blob, "receipt.jpg"));
+      if (pdf) form.append("images", pdf.blob, pdf.name);
+      else photos.forEach((p) => form.append("images", p.blob, "receipt.jpg"));
       const d = await readReceipt(form);
       const bought = d.purchasedAt ?? todayISO();
       setDraft(d);
@@ -167,8 +179,10 @@ export function ScanReceiptSheet({ open, onClose, onBack }: { open: boolean; onC
       paidByPersonId: split.paidBy, split: toParts(split),
     });
     let photoNote = "";
-    try { if (photos.length) await addPhotos.mutateAsync({ id: saved.id, photos: photos.map((p) => p.blob) }); }
-    catch (e) { photoNote = ` The photo wasn't saved: ${errorMessage(e)}`; }
+    try {
+      if (pdf) await attach.mutateAsync({ id: saved.id, file: pdf.blob, name: pdf.name });
+      else if (photos.length) await addPhotos.mutateAsync({ id: saved.id, photos: photos.map((p) => p.blob) });
+    } catch (e) { photoNote = ` The ${pdf ? "PDF" : "photo"} wasn't saved: ${errorMessage(e)}`; }
     toast({
       message: `Saved ${saved.store ?? "receipt"}, ${money(saved.total)}`
         + (saved.addedToInventory ? `. ${saved.addedToInventory} put away in inventory.` : ".") + photoNote,
@@ -183,14 +197,14 @@ export function ScanReceiptSheet({ open, onClose, onBack }: { open: boolean; onC
     <div className="flex gap-2">
       <Button className="shrink-0" onClick={() => { setDraft(null); setRows([]); }}>Back</Button>
       <Button className="flex-1" variant="primary" disabled={!included.length || totalNum == null || !date}
-        busy={save.isPending || addPhotos.isPending} onClick={saveAll}>
+        busy={save.isPending || addPhotos.isPending || attach.isPending} onClick={saveAll}>
         <Check className="size-4" />Save {money(totalNum ?? linesTotal)}{toInventory ? ` · ${toInventory} to inventory` : ""}
       </Button>
     </div>
   ) : (
     <div className="flex gap-2">
       {onBack && <Button className="shrink-0" onClick={onBack}>Back</Button>}
-      <Button className="flex-1" variant="primary" busy={reading} disabled={!photos.length || preparing} onClick={read}>
+      <Button className="flex-1" variant="primary" busy={reading} disabled={(!photos.length && !pdf) || preparing} onClick={read}>
         <Sparkles className="size-4" />{reading ? "Reading…" : "Read receipt"}
       </Button>
     </div>
@@ -258,6 +272,13 @@ export function ScanReceiptSheet({ open, onClose, onBack }: { open: boolean; onC
             <div className="flex min-h-28 items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-border text-sm text-muted">
               <Spinner />Preparing photo…
             </div>
+          ) : pdf ? (
+            <div className="flex items-center gap-3 rounded-2xl border border-border p-3 text-sm">
+              <FileText className="size-6 shrink-0 text-accent" />
+              <span className="min-w-0 flex-1 truncate">{pdf.name}</span>
+              <button type="button" aria-label="Remove PDF" onClick={() => setPdf(null)}
+                className="flex size-7 shrink-0 items-center justify-center rounded-full bg-surface-2"><X className="size-4" /></button>
+            </div>
           ) : photos.length < 4 && (
             <div className="grid grid-cols-2 gap-2">
               <PhotoButton bare camera onFiles={pickPhotos}
@@ -268,10 +289,16 @@ export function ScanReceiptSheet({ open, onClose, onBack }: { open: boolean; onC
                 className="flex min-h-28 flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-border text-sm font-medium">
                 <ImagePlus className="size-7 text-accent" />From photos
               </PhotoButton>
+              {!photos.length && (
+                <PhotoButton bare accept="application/pdf,.pdf" onFiles={pickPdf}
+                  className="col-span-2 flex min-h-14 items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-border text-sm font-medium">
+                  <FileText className="size-5 text-accent" />PDF of an online order
+                </PhotoButton>
+              )}
             </div>
           )}
           <p className="text-xs text-muted">
-            Flat, well lit, whole width in frame. Long receipt? One photo per section, top to bottom (up to 4).
+            {pdf ? "The first 4 pages are read. The PDF is kept with the receipt." : "Flat, well lit, whole width in frame. Long receipt? One photo per section, top to bottom (up to 4). Ordered online? Use the order's PDF receipt."}
             Every line is recorded with its price; food can go straight into inventory.
           </p>
           {error != null && <ErrorText error={error} />}

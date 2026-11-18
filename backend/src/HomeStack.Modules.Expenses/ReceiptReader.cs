@@ -22,10 +22,14 @@ public partial class ReceiptReader(AiService ai, ExpensesService expenses, Inven
         decimal? Discount, string? Category, bool? Food, string? FoodCategory, string? Location, int? SameAs,
         double? PackQuantity, string? PackUnit);
 
-    public async Task<ReceiptDraftDto> ReadAsync(IReadOnlyList<AiImage> images, CancellationToken ct)
+    /// <param name="document">The images are pages of a PDF (usually an online order's receipt or invoice), not photos.</param>
+    public async Task<ReceiptDraftDto> ReadAsync(IReadOnlyList<AiImage> images, bool document, CancellationToken ct)
     {
         var user = new StringBuilder()
-            .AppendLine(images.Count > 1 ? $"These {images.Count} photos are one receipt, top to bottom." : "This photo is a receipt.")
+            .AppendLine(document
+                ? (images.Count > 1 ? $"These {images.Count} images are the pages of one receipt, in order." : "This image is a receipt.")
+                  + " It's a PDF, probably an online order (receipt, invoice or order confirmation)."
+                : images.Count > 1 ? $"These {images.Count} photos are one receipt, top to bottom." : "This photo is a receipt.")
             .AppendLine("List every item bought on it.")
             .AppendLine(Shape)
             .ToString();
@@ -77,7 +81,12 @@ public partial class ReceiptReader(AiService ai, ExpensesService expenses, Inven
               Units: g, kg, ml, L, oz, lb. null when no size is printed. Don't guess from what the product usually is.
             - "sameAs": the id of a known item (list below) when this line is clearly the same product bought at another
               store: same brand, variety and size. Otherwise null. Don't guess.
-            - "store": the store's short name ("Costco", "Walmart", "Superstore"). "tax": all tax lines added up.
+            - Online orders (a PDF receipt, invoice or order confirmation): list only what was charged. Leave out items
+              marked unavailable, out of stock, cancelled or refunded; a substitution is the item that was delivered,
+              at its price. Delivery, service and bag fees are "fees"; a driver tip is its own entry, category "other".
+              "date" is the order or delivery date printed on it. Item numbers are often missing: "code" null then.
+            - "store": the store's short name ("Costco", "Walmart", "Superstore"), also for online orders
+              ("Walmart.ca" -> "Walmart"). "tax": all tax lines added up.
             - Never invent lines. If you can't read one, leave it out. If the image isn't a receipt, return no lines and
               explain in "note".
 
