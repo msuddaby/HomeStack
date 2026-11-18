@@ -4,7 +4,7 @@ import { BookmarkPlus, CalendarPlus, Check, ChevronDown, Clock, ShoppingCart, Sp
 import { useAiSettings } from "@/core/ai";
 import { errorMessage } from "@/core/api";
 import { addDays, parseISO, todayISO } from "@/core/dates";
-import { Button, Chip, cx, Input, Select, Sheet, Spinner } from "@/core/ui";
+import { Button, Check as CheckBox, Chip, cx, Input, Select, Sheet, Spinner } from "@/core/ui";
 import { fetchIdeas, useAcceptIdea, usePlanToList, type Idea } from "./api";
 import { minutes } from "./format";
 
@@ -98,7 +98,7 @@ export function IdeasPanel() {
           {error != null && <p className="mt-2 text-sm text-danger">{errorMessage(error)}</p>}
           {ideas && !busy && (
             ideas.length === 0 ? <p className="mt-2 text-sm text-muted">No usable ideas came back. Try again or loosen the preferences.</p> : (
-              <ul className="mt-2 flex flex-col gap-2">{ideas.map((i) => <IdeaCard key={i.title} idea={i} />)}</ul>
+              <ul className="mt-2 flex flex-col gap-2">{ideas.map((i, n) => <IdeaCard key={i.title} idea={i} index={n} />)}</ul>
             )
           )}
         </>
@@ -107,7 +107,8 @@ export function IdeasPanel() {
   );
 }
 
-function IdeaCard({ idea }: { idea: Idea }) {
+/** `index` staggers the cards in as a batch of ideas arrives. */
+function IdeaCard({ idea, index = 0 }: { idea: Idea; index?: number }) {
   const accept = useAcceptIdea();
   const [date, setDate] = useState(todayISO());
   const [done, setDone] = useState<null | { recipeId: number; planned: string | null }>(null);
@@ -120,7 +121,7 @@ function IdeaCard({ idea }: { idea: Idea }) {
   }
 
   return (
-    <li className="rounded-xl border border-border bg-surface p-3">
+    <li className="animate-rise rounded-xl border border-border bg-surface p-3" style={{ animationDelay: `${index * 60}ms` }}>
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <p className="font-medium">{idea.title}</p>
@@ -132,7 +133,7 @@ function IdeaCard({ idea }: { idea: Idea }) {
       <DraftDetails idea={idea} />
 
       {done?.planned ? (
-        <p className="mt-2 flex items-center gap-1.5 text-sm text-accent"><Check className="size-4" />On the plan for {dayLabel(done.planned).replace(/^(Tonight|Tomorrow)$/, (m) => m.toLowerCase())}
+        <p className="animate-rise mt-2 flex items-center gap-1.5 text-sm text-accent"><Check className="size-4" />On the plan for {dayLabel(done.planned).replace(/^(Tonight|Tomorrow)$/, (m) => m.toLowerCase())}
           {recipeLink && <Link to={`/meals/recipes/${recipeLink}`} className="ml-auto text-xs text-muted underline">Open recipe</Link>}</p>
       ) : (
         <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -210,7 +211,7 @@ export function WeekIdeasSheet({ open, onClose, onAdded }: { open: boolean; onCl
     <Sheet open={open} onClose={close} title="Plan my week" footer={footer}>
       {!ai.data ? <Spinner /> : !ai.data.configured ? <AiNotSetUp /> : saved != null ? (
         <div className="flex flex-col gap-2 text-sm">
-          <p className="flex items-center gap-1.5 font-medium text-accent"><Check className="size-4" />Added {saved} {saved === 1 ? "dinner" : "dinners"} to the plan.</p>
+          <p className="animate-rise flex items-center gap-1.5 font-medium text-accent"><Check className="size-4" />Added {saved} {saved === 1 ? "dinner" : "dinners"} to the plan.</p>
           {toList.isSuccess ? <p className="text-muted">Added {toList.data.added} to the shopping list.</p>
             : needToBuy.length > 0 ? <p className="text-muted">To buy: {needToBuy.join(", ")}</p>
             : <p className="text-muted">You have everything for these.</p>}
@@ -222,16 +223,17 @@ export function WeekIdeasSheet({ open, onClose, onAdded }: { open: boolean; onCl
         <div className="flex flex-col gap-2">
           {ideas.length === 0 && <p className="text-sm text-muted">No usable plan came back. Try again.</p>}
           {ideas.map((idea, i) => (
-            <div key={i} className={cx("rounded-xl border border-border p-3", skip.has(i) && "opacity-50")}>
-              <label className="flex items-start gap-2">
-                <input type="checkbox" className="mt-1 size-5 shrink-0 accent-[var(--color-accent)]" checked={!skip.has(i)}
+            <div key={i} className={cx("animate-rise rounded-xl border border-border p-3 transition-opacity duration-200", skip.has(i) && "opacity-50")}
+              style={{ animationDelay: `${i * 60}ms` }}>
+              <div className="flex items-start gap-2">
+                <CheckBox checked={!skip.has(i)} label={`Plan ${idea.title}`}
                   onChange={() => setSkip((s) => { const n = new Set(s); if (n.has(i)) n.delete(i); else n.add(i); return n; })} />
                 <span className="min-w-0">
                   <span className="block text-xs font-semibold uppercase tracking-wide text-muted">{idea.date ? dayLabel(idea.date) : "Any day"}</span>
                   <span className="block font-medium">{idea.title}</span>
                   {idea.why && <span className="block text-sm text-muted">{idea.why}</span>}
                 </span>
-              </label>
+              </div>
               <IdeaFacts idea={idea} />
               <DraftDetails idea={idea} />
             </div>

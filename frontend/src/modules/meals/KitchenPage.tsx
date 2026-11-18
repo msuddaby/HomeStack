@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { ArrowLeft, ArrowRight, Check, ChefHat, ListChecks, Minus, Plus, Sun, Timer, X } from "lucide-react";
-import { Button, cx, Empty, Sheet, Spinner } from "@/core/ui";
+import { haptic, useSlideClass } from "@/core/motion";
+import { Button, cx, Empty, Sheet, Spinner, TickBox } from "@/core/ui";
 import { useRecipe, type Ingredient } from "./api";
 import { CookSheet } from "./CookSheet";
 import { prettyAmount } from "./format";
@@ -93,6 +94,8 @@ export function KitchenPage() {
   const last = steps.length + 1; // 0 = get ready, 1..n = steps, n+1 = done
   const current = Math.min(page, last);
   const go = useCallback((p: number) => setPage(Math.max(0, Math.min(last, p))), [last, setPage]);
+  // Steps slide in from the side you're heading: forward from the right, back from the left.
+  const slide = useSlideClass(current);
 
   // Tick while any timer runs; beep once when one finishes.
   const running = timers.some((t) => !t.done);
@@ -170,7 +173,7 @@ export function KitchenPage() {
           <Button variant="ghost" className="px-3" onClick={() => setShowIngredients(true)}><ListChecks className="size-5" />Ingredients</Button>
         </div>
         <div className="h-1 bg-surface-2">
-          <div className="h-full bg-accent transition-all" style={{ width: `${(100 * current) / last}%` }} />
+          <div className="h-full bg-accent transition-[width] duration-500 ease-out-soft" style={{ width: `${(100 * current) / last}%` }} />
         </div>
       </header>
 
@@ -178,7 +181,7 @@ export function KitchenPage() {
         <div className="border-b border-border bg-surface">
           <div className="mx-auto flex max-w-3xl flex-wrap gap-2 px-3 py-2">
             {timers.map((t) => (
-              <span key={t.id} className={cx("inline-flex items-center gap-2 rounded-full py-1 pl-3 pr-1 text-sm font-semibold tabular-nums",
+              <span key={t.id} className={cx("animate-pop inline-flex items-center gap-2 rounded-full py-1 pl-3 pr-1 text-sm font-semibold tabular-nums",
                 t.done ? "animate-pulse bg-danger text-surface" : "bg-frost-soft text-frost")}>
                 <Timer className="size-4" />
                 {t.done ? `${t.label} done` : clock((t.endsAt - now) / 1000)}
@@ -192,7 +195,7 @@ export function KitchenPage() {
       )}
 
       <main className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-3xl px-5 py-6">
+        <div key={current} className={cx("mx-auto max-w-3xl px-5 py-6", slide)}>
           {current === 0 && (
             <>
               <h1 className="text-3xl font-bold">Get ready</h1>
@@ -287,12 +290,10 @@ function IngredientChecklist({ ingredients, factor, checked, onToggle, large }: 
         const done = checked.includes(i.id);
         return (
           <li key={i.id}>
-            <button onClick={() => onToggle(i.id)} className={cx("flex w-full items-start gap-3 py-3 text-left", large && "text-lg")}>
-              <span className={cx("mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-md border-2",
-                done ? "border-accent bg-accent text-accent-text" : "border-border")}>
-                {done && <Check className="size-4" />}
-              </span>
-              <span className={cx("min-w-0 flex-1", done && "text-muted line-through")}>
+            <button onClick={() => { haptic(); onToggle(i.id); }} role="checkbox" aria-checked={done}
+              className={cx("press flex w-full items-start gap-3 py-3 text-left", large && "text-lg")}>
+              <TickBox checked={done} className="mt-0.5" />
+              <span className={cx("min-w-0 flex-1 transition-colors duration-300", done && "text-muted line-through")}>
                 {amountText(i, factor) && <b className="mr-1.5">{amountText(i, factor)}</b>}{i.name}
                 {i.note && <span className="text-muted">, {i.note}</span>}
                 {i.optional && <span className="text-muted"> (optional)</span>}

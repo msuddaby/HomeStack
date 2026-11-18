@@ -1,7 +1,8 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Link } from "react-router";
 import { CheckCircle2, ChefHat, ChevronLeft, ChevronRight, Pencil, Plus, ShoppingCart, Sparkles, Trash2, BookOpen } from "lucide-react";
 import { addDays, parseISO, todayISO, toISO } from "@/core/dates";
+import { Bump, MotionItem, useExitingList, useSlideClass } from "@/core/motion";
 import { Button, Chip, cx, ErrorText, Sheet } from "@/core/ui";
 import { useDeletePlan, usePlan, usePlanToList, type PlanEntry } from "./api";
 import { AddMealSheet } from "./AddMealSheet";
@@ -32,6 +33,8 @@ export function PlanPage() {
     return m;
   }, [plan.data]);
   const missing = (plan.data ?? []).filter((e) => !e.cookedAt).reduce((s, e) => s + e.missingCount, 0);
+  // The week slides in from the side you're heading towards.
+  const slide = useSlideClass(start);
   const label = `${parseISO(start).toLocaleDateString(undefined, { month: "short", day: "numeric" })} – ${parseISO(end).toLocaleDateString(undefined, { month: "short", day: "numeric" })}`;
 
   return (
@@ -45,14 +48,14 @@ export function PlanPage() {
       <Button className="mb-3 w-full" onClick={() => setPlanning(true)}><Sparkles className="size-4 text-accent" />Plan my week</Button>
 
       {missing > 0 && (
-        <div className="mb-3 flex items-center justify-between gap-2 rounded-2xl bg-warn-soft px-3 py-2 text-sm text-warn">
-          <span>{toList.isSuccess ? `Added ${toList.data.added} to the shopping list` : `${missing} ingredient${missing === 1 ? "" : "s"} missing this week`}</span>
+        <div className="animate-rise mb-3 flex items-center justify-between gap-2 rounded-2xl bg-warn-soft px-3 py-2 text-sm text-warn">
+          <span key={String(toList.isSuccess)} className="animate-fade-in">{toList.isSuccess ? `Added ${toList.data.added} to the shopping list` : `${missing} ingredient${missing === 1 ? "" : "s"} missing this week`}</span>
           {!toList.isSuccess && <Button className="min-h-9 shrink-0" busy={toList.isPending} onClick={() => toList.mutate({ from: start, to: end })}><ShoppingCart className="size-4" />Add to list</Button>}
         </div>
       )}
       <ErrorText error={toList.error ?? plan.error} />
 
-      <div className="flex flex-col gap-2">
+      <div key={start} className={cx("flex flex-col gap-2", slide)}>
         {days.map((d) => {
           const entries = byDay.get(d) ?? [];
           const dt = parseISO(d);
@@ -67,20 +70,7 @@ export function PlanPage() {
                 </h2>
                 <button onClick={() => setAdding(d)} className="rounded-full p-1.5 text-muted hover:bg-surface-2 hover:text-text" aria-label={`Add meal on ${toISO(dt)}`}><Plus className="size-5" /></button>
               </div>
-              {entries.length > 0 && (
-                <ul className="mt-1 flex flex-col">
-                  {entries.map((e) => (
-                    <li key={e.id}>
-                      <button onClick={() => setSelected(e)} className="flex w-full items-center gap-2 rounded-lg py-1.5 text-left hover:bg-surface-2">
-                        <span className="w-16 shrink-0 text-xs text-muted">{SLOT_LABEL[e.slot]}</span>
-                        <span className={cx("min-w-0 flex-1 truncate", e.cookedAt && "text-muted line-through")}>{e.title}</span>
-                        {e.cookedAt ? <CheckCircle2 className="size-4 shrink-0 text-accent" />
-                          : e.missingCount > 0 && <Chip tone="warn" className="shrink-0">need {e.missingCount}</Chip>}
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
+              <DayMeals entries={entries} onSelect={setSelected} />
             </section>
           );
         })}
@@ -97,14 +87,40 @@ export function PlanPage() {
   );
 }
 
-function EntrySheet({ entry, onClose }: { entry: PlanEntry | null; onClose: () => void }) {
+/** A day's meals: added ones open in, removed ones fold away, and a cooked one gets its tick with a pop. */
+function DayMeals({ entries, onSelect }: { entries: PlanEntry[]; onSelect: (e: PlanEntry) => void }) {
+  const rows = useExitingList(entries, (e) => e.id);
+  if (!rows.length) return null;
+  return (
+    <ul className="mt-1 flex flex-col">
+      {rows.map(({ item: e, key, leaving, entering }) => (
+        <MotionItem as="li" key={key} leaving={leaving} entering={entering}>
+          <button onClick={() => onSelect(e)} className="flex w-full items-center gap-2 rounded-lg py-1.5 text-left transition-colors hover:bg-surface-2 active:bg-surface-2">
+            <span className="w-16 shrink-0 text-xs text-muted">{SLOT_LABEL[e.slot]}</span>
+            <span className={cx("min-w-0 flex-1 truncate transition-colors duration-300", e.cookedAt && "text-muted line-through")}>{e.title}</span>
+            <Bump value={!!e.cookedAt} className="shrink-0">
+              {e.cookedAt ? <CheckCircle2 className="size-4 text-accent" />
+                : e.missingCount > 0 && <Chip tone="warn">need {e.missingCount}</Chip>}
+            </Bump>
+          </button>
+        </MotionItem>
+      ))}
+    </ul>
+  );
+}
+
+function EntrySheet({ entry: current, onClose }: { entry: PlanEntry | null; onClose: () => void }) {
   const del = useDeletePlan();
   const [cooking, setCooking] = useState(false);
   const [editing, setEditing] = useState(false);
+  // Keep the last entry so the sheet can slide away with its content instead of vanishing.
+  const last = useRef(current);
+  if (current) last.current = current;
+  const entry = current ?? last.current;
   if (!entry) return null;
   return (
     <>
-      <Sheet open={!cooking && !editing} onClose={onClose} title={entry.title}>
+      <Sheet open={!!current && !cooking && !editing} onClose={onClose} title={entry.title}>
         <div className="flex flex-col gap-2">
           <p className="text-sm text-muted">{SLOT_LABEL[entry.slot]} · {parseISO(entry.date).toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" })}
             {entry.cookedAt && " · cooked"}</p>

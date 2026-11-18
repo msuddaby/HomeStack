@@ -72,6 +72,8 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; }
   --animate-collapse: collapse 280ms var(--ease-in-soft) both;
   --animate-expand: expand 320ms var(--ease-out-soft) both;
   --animate-rise: rise 320ms var(--ease-out-soft) both;
+  --animate-slide-next: slide-next 300ms var(--ease-out-soft) both;
+  --animate-slide-prev: slide-prev 300ms var(--ease-out-soft) both;
 
   @keyframes fade-in { from { opacity: 0; } }
   @keyframes fade-out { to { opacity: 0; } }
@@ -85,9 +87,13 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; }
   @keyframes draw { from { stroke-dashoffset: 24; } to { stroke-dashoffset: 0; } }
   /* Collapse/expand animate grid rows, so the content's own height is used. The child needs min-h-0 + overflow-hidden
      (the `.motion-rows` helper below sets that up). */
-  @keyframes collapse { from { grid-template-rows: 1fr; opacity: 1; } to { grid-template-rows: 0fr; opacity: 0; } }
-  @keyframes expand { from { grid-template-rows: 0fr; opacity: 0; } to { grid-template-rows: 1fr; opacity: 1; } }
+  /* Inside a flex/grid stack with a gap, set --stack-gap to that gap so the gap folds away too. */
+  @keyframes collapse { from { grid-template-rows: 1fr; opacity: 1; } to { grid-template-rows: 0fr; opacity: 0; margin-top: calc(-1 * var(--stack-gap, 0px)); } }
+  @keyframes expand { from { grid-template-rows: 0fr; opacity: 0; margin-top: calc(-1 * var(--stack-gap, 0px)); } to { grid-template-rows: 1fr; opacity: 1; } }
   @keyframes rise { from { opacity: 0; transform: translateY(8px); } }
+  /* Paging forward/back (cooking steps, weeks): the new page comes in from the side you're heading towards. */
+  @keyframes slide-next { from { opacity: 0; transform: translateX(32px); } }
+  @keyframes slide-prev { from { opacity: 0; transform: translateX(-32px); } }
 }
 
 .motion-rows { display: grid; grid-template-rows: 1fr; }

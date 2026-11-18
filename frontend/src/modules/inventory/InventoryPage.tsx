@@ -2,8 +2,9 @@ import { useDeferredValue, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { Flame, Plus, Search, Refrigerator, Tags } from "lucide-react";
 import { PageHeader } from "@/core/layout";
+import { useExitingList } from "@/core/motion";
 import { Button, cx, Empty, Input, Spinner } from "@/core/ui";
-import { useCategories, useDashboard, useItems, useLocations, type Item } from "./api";
+import { useCategories, useDashboard, useItems, useLocations, type Category, type Item } from "./api";
 import { AddItemSheet } from "./AddItemSheet";
 import { ItemRow } from "./ItemRow";
 import { ItemSheet } from "./ItemSheet";
@@ -49,20 +50,18 @@ export function InventoryPage() {
         <Input className="pl-9" placeholder="Search items" value={q} onChange={(e) => setQ(e.target.value)} type="search" />
       </div>
 
-      {items.isPending ? <Spinner /> : items.data?.length ? (
-        <ul className="divide-y divide-border">
-          {items.data.map((i) => (
-            <ItemRow key={i.id} item={i} category={catById.get(i.product.category)} showLocation={!locationId} onClick={() => setSelectedId(i.id)} />
-          ))}
-        </ul>
-      ) : (
-        <Empty icon={<Refrigerator className="size-10" />} title={q ? "No matches" : "Nothing here yet"}>
-          {!q && <Button variant="primary" className="mt-3" onClick={() => setParam("add", "1")}><Plus className="size-4" />Add groceries</Button>}
-        </Empty>
+      {items.isPending ? <Spinner /> : (
+        // A new list per tab/search, so switching fades in fresh instead of animating every row in and out.
+        <ItemList key={`${locationId ?? "all"}|${query}`} fade={!query} items={items.data ?? []} catById={catById} showLocation={!locationId}
+          onSelect={setSelectedId} empty={
+            <Empty icon={<Refrigerator className="size-10" />} title={q ? "No matches" : "Nothing here yet"}>
+              {!q && <Button variant="primary" className="mt-3" onClick={() => setParam("add", "1")}><Plus className="size-4" />Add groceries</Button>}
+            </Empty>
+          } />
       )}
 
       <button onClick={() => setParam("add", "1")} aria-label="Add item"
-        className="fixed bottom-24 right-4 z-30 flex size-14 items-center justify-center rounded-full bg-accent text-accent-text shadow-lg md:hidden">
+        className="press animate-pop fixed bottom-24 right-4 z-30 flex size-14 items-center justify-center rounded-full bg-accent text-accent-text shadow-lg md:hidden">
         <Plus className="size-7" />
       </button>
 
@@ -72,9 +71,27 @@ export function InventoryPage() {
   );
 }
 
+/** Used-up or moved-away items fold out of the list; new ones open in. */
+function ItemList({ items, catById, showLocation, onSelect, empty, fade }: {
+  /** Fade in when it appears (switching tabs), but not on every keystroke of a search. */
+  fade: boolean;
+  items: Item[]; catById: Map<string, Category>; showLocation: boolean; onSelect: (id: number) => void; empty: React.ReactNode;
+}) {
+  const rows = useExitingList(items, (i) => i.id);
+  if (!rows.length) return <div className={cx(fade && "animate-fade-in")}>{empty}</div>;
+  return (
+    <ul className={cx(fade && "animate-fade-in")}>
+      {rows.map(({ item: i, key, leaving, entering }) => (
+        <ItemRow key={key} item={i} category={catById.get(i.product.category)} showLocation={showLocation} onClick={() => onSelect(i.id)}
+          leaving={leaving} entering={entering} />
+      ))}
+    </ul>
+  );
+}
+
 function Tab({ active, onClick, label, count }: { active: boolean; onClick: () => void; label: string; count?: number }) {
   return (
-    <button onClick={onClick} className={cx("flex min-h-10 shrink-0 items-center gap-1.5 rounded-full border px-4 text-sm font-medium",
+    <button onClick={onClick} className={cx("press flex min-h-10 shrink-0 items-center gap-1.5 rounded-full border px-4 text-sm font-medium transition-colors duration-200",
       active ? "border-accent bg-accent text-accent-text" : "border-border bg-surface text-text")}>
       {label}{count != null && <span className={cx("text-xs", active ? "opacity-80" : "text-muted")}>{count}</span>}
     </button>

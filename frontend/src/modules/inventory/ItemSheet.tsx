@@ -3,6 +3,7 @@ import { Minus, Plus, Snowflake, Trash2, Utensils, Flame, Pencil, PackageOpen, S
 import { useAddToList } from "@/modules/shopping/api";
 import { ApiError } from "@/core/api";
 import { shortDate, todayISO } from "@/core/dates";
+import { Bump } from "@/core/motion";
 import { Button, Chip, ErrorText, Field, Input, Select, Sheet } from "@/core/ui";
 import { useCategories, useConsume, useDeleteItem, useLocations, useMove, useUndoToast, useUpdateItem, type Item, type Location } from "./api";
 import { formatMoney, formatQty, itemStatus } from "./logic";
@@ -16,9 +17,13 @@ export function ItemSheet({ item, onClose }: { item: Item | null; onClose: () =>
   return (
     <>
       <Sheet open={!!item && productId == null} onClose={onClose} title={item?.product.name ?? ""}>
-        {item && (editing
-          ? <EditForm item={item} onDone={() => setEditing(false)} />
-          : <Actions key={item.id} item={item} onClose={onClose} onEdit={() => setEditing(true)} onEditProduct={() => setProductId(item.product.id)} />)}
+        {item && (
+          <div key={editing ? "edit" : "view"} className="animate-fade-in">
+            {editing
+              ? <EditForm item={item} onDone={() => setEditing(false)} />
+              : <Actions key={item.id} item={item} onClose={onClose} onEdit={() => setEditing(true)} onEditProduct={() => setProductId(item.product.id)} />}
+          </div>
+        )}
       </Sheet>
       <ProductSheet productId={productId} onClose={() => setProductId(null)} />
     </>
@@ -64,7 +69,9 @@ function Actions({ item, onClose, onEdit, onEditProduct }: { item: Item; onClose
         <ProductThumb product={item.product} emoji={cat?.emoji} className="size-16 rounded-xl" emojiClassName="text-3xl" lazy={false} />
         <div className="min-w-0 flex-1 text-sm">
           <p className="text-muted">{[item.product.brand, cat?.label].filter(Boolean).join(" · ")}</p>
-          <p className="mt-1 text-base font-semibold">{formatQty(item.quantity, item.unit) || "1"} · {item.location.name}</p>
+          <p className="mt-1 text-base font-semibold">
+            <Bump value={item.quantity}>{formatQty(item.quantity, item.unit) || "1"}</Bump> · <Bump value={item.location.id}>{item.location.name}</Bump>
+          </p>
           <div className="mt-1 flex flex-wrap gap-1">{status && <Chip tone={status.tone}>{status.label}</Chip>}</div>
         </div>
         <Button variant="ghost" onClick={onEdit} aria-label="Edit" className="px-3"><Pencil className="size-4" /></Button>

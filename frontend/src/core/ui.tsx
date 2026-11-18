@@ -152,32 +152,39 @@ export function Empty({ icon, title, children }: { icon?: ReactNode; title: stri
  * A tick box that feels like a native control: a 44px tap target, a little pop and a drawn tick when it's checked.
  * `round` for list check-offs (shopping), square for everything else.
  */
-export function Check({ checked, onChange, label, disabled, round, animate: forceAnimate, className = "-m-2.5 size-11" }: {
+export function Check({ checked, onChange, label, disabled, round, animate, className = "-m-2.5 size-11" }: {
   checked: boolean; onChange: (checked: boolean) => void; label: string; disabled?: boolean; round?: boolean;
   /** Play the tick animation even though it was already checked when it appeared (it moved to another list). */
   animate?: boolean;
   /** Sizing; replaces the default 44px target that overlaps its neighbours to look 24px. */
   className?: string;
 }) {
-  // Only animate changes made while on screen, not every checked box on page load.
-  const initial = useRef(checked);
-  const animate = checked && (!initial.current || !!forceAnimate);
-  if (!checked) initial.current = false;
   return (
     <button type="button" role="checkbox" aria-checked={checked} aria-label={label} disabled={disabled}
       onClick={() => { haptic(); onChange(!checked); }}
       className={cx("press grid shrink-0 place-items-center disabled:opacity-50", className)}>
-      <span className={cx("grid size-6 place-items-center border-2 transition-colors duration-200",
-        round ? "rounded-full" : "rounded-lg",
-        checked ? "border-accent bg-accent text-accent-text" : "border-border bg-surface",
-        animate && "animate-pop")}>
-        {checked && (
-          <svg viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth={3.2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-            <path d="M5 12.5l4.5 4.5L19 7.5" strokeDasharray={24} className={animate ? "animate-draw" : undefined} />
-          </svg>
-        )}
-      </span>
+      <TickBox checked={checked} round={round} animate={animate} />
     </button>
+  );
+}
+
+/** Just the box of a `Check`, for rows that are one big tap target themselves (call `haptic()` in their onClick). */
+export function TickBox({ checked, round, animate: force, className }: { checked: boolean; round?: boolean; animate?: boolean; className?: string }) {
+  // Only animate changes made while on screen, not every checked box on page load.
+  const initial = useRef(checked);
+  const animate = checked && (!initial.current || !!force);
+  if (!checked) initial.current = false;
+  return (
+    <span className={cx("grid size-6 shrink-0 place-items-center border-2 transition-colors duration-200",
+      round ? "rounded-full" : "rounded-lg",
+      checked ? "border-accent bg-accent text-accent-text" : "border-border bg-surface",
+      animate && "animate-pop", className)}>
+      {checked && (
+        <svg viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth={3.2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+          <path d="M5 12.5l4.5 4.5L19 7.5" strokeDasharray={24} className={animate ? "animate-draw" : undefined} />
+        </svg>
+      )}
+    </span>
   );
 }
 

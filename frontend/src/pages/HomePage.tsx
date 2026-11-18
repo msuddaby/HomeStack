@@ -12,7 +12,7 @@ export function HomePage() {
   return (
     <>
       <PageHeader title={`${greeting()}, ${me.data?.user.name ?? ""}`} subtitle={me.data?.household.name} />
-      <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-4 [--stack-gap:1rem]">
         {modules.map((m) => m.DashboardWidget && <m.DashboardWidget key={m.id} />)}
       </div>
     </>

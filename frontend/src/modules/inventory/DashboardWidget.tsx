@@ -1,8 +1,9 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router";
 import { AlertTriangle, Clock, Plus, Snowflake, ShoppingBasket, Sparkles, Archive, ShoppingCart, Check, Flame, ChevronRight } from "lucide-react";
 import { useAddToList } from "@/modules/shopping/api";
 import { duration } from "@/core/dates";
+import { MotionItem, useExitingList, usePresence } from "@/core/motion";
 import { Button, Card, Chip, ErrorText, Spinner } from "@/core/ui";
 import { useCategories, useDashboard, useMove, useUndoToast, useWasteStats, type Item, type LocationKind } from "./api";
 import { ItemRow } from "./ItemRow";
@@ -28,8 +29,8 @@ export function InventoryDashboardWidget() {
   const d = dash.data;
   const freezer = d.counts.find((c) => c.kind === "freezer");
   const allClear = !d.expired.length && !d.expiringSoon.length && !d.freezeSoon.length && !d.longInFreezer.length && !d.lowStock.length;
-  const row = (i: Item, action?: ReactNode) => (
-    <ItemRow key={i.id} item={i} category={catById.get(i.product.category)} showLocation onClick={() => setSelected(i)} action={action} />
+  const row = (i: Item, action?: ReactNode, motion?: { leaving: boolean; entering: boolean }) => (
+    <ItemRow key={i.id} item={i} category={catById.get(i.product.category)} showLocation onClick={() => setSelected(i)} action={action} {...motion} />
   );
 
   return (
@@ -47,51 +48,34 @@ export function InventoryDashboardWidget() {
       <Link to="/inventory?add=1"><Button variant="primary" className="w-full"><Plus className="size-4" />Add groceries</Button></Link>
 
       {allClear && (
-        <Card><div className="flex items-center gap-3 text-sm"><Sparkles className="size-5 text-accent" />Nothing needs attention. Everything's fresh.</div></Card>
+        <Card className="animate-rise"><div className="flex items-center gap-3 text-sm"><Sparkles className="size-5 text-accent" />Nothing needs attention. Everything's fresh.</div></Card>
       )}
 
-      {d.freezeSoon.length > 0 && (
-        <Card title={<Title icon={<Snowflake className="size-4 text-frost" />} text="Freeze it or eat it" count={d.freezeSoon.length} />}>
-          <p className="-mt-1 mb-2 text-xs text-muted">These expire in the next couple of days but keep well frozen.</p>
-          <ul className="divide-y divide-border">
-            {d.freezeSoon.map((i) => row(i, freezer && (
-              <Button className="shrink-0 px-3" busy={move.isPending && move.variables?.id === i.id}
-                onClick={async () => undoToast(await move.mutateAsync({ id: i.id, locationId: freezer.locationId }), `Froze ${i.product.name}`)}>
-                <Snowflake className="size-4" />Freeze
-              </Button>
-            )))}
-          </ul>
-        </Card>
-      )}
+      <ItemSection items={d.freezeSoon} title={<Title icon={<Snowflake className="size-4 text-frost" />} text="Freeze it or eat it" count={d.freezeSoon.length} />}
+        intro={<p className="-mt-1 mb-2 text-xs text-muted">These expire in the next couple of days but keep well frozen.</p>}
+        render={(i, m) => row(i, freezer && (
+          <Button className="shrink-0 px-3" busy={move.isPending && move.variables?.id === i.id}
+            onClick={async () => undoToast(await move.mutateAsync({ id: i.id, locationId: freezer.locationId }), `Froze ${i.product.name}`)}>
+            <Snowflake className="size-4" />Freeze
+          </Button>
+        ), m)} />
 
-      {d.expired.length > 0 && (
-        <Card title={<Title icon={<AlertTriangle className="size-4 text-danger" />} text="Expired" count={d.expired.length} />}>
-          <ul className="divide-y divide-border">
-            {d.expired.map((i) => row(i, (
-              <Button className="shrink-0 px-3" aria-label={`Add ${i.product.name} to shopping list`} disabled={listed.has(i.product.id)}
-                onClick={() => addToList.mutate({ productId: i.product.id }, { onSuccess: () => setListed((s) => new Set(s).add(i.product.id)) })}>
-                {listed.has(i.product.id) ? <Check className="size-4" /> : <ShoppingCart className="size-4" />}
-              </Button>
-            )))}
-          </ul>
-        </Card>
-      )}
+      <ItemSection items={d.expired} title={<Title icon={<AlertTriangle className="size-4 text-danger" />} text="Expired" count={d.expired.length} />}
+        render={(i, m) => row(i, (
+          <Button className="shrink-0 px-3" aria-label={`Add ${i.product.name} to shopping list`} disabled={listed.has(i.product.id)}
+            onClick={() => addToList.mutate({ productId: i.product.id }, { onSuccess: () => setListed((s) => new Set(s).add(i.product.id)) })}>
+            {listed.has(i.product.id) ? <Check className="size-4 animate-pop text-accent" /> : <ShoppingCart className="size-4" />}
+          </Button>
+        ), m)} />
 
-      {d.expiringSoon.length > 0 && (
-        <Card title={<Title icon={<Clock className="size-4 text-warn" />} text="Use soon" count={d.expiringSoon.length} />}>
-          <ul className="divide-y divide-border">{d.expiringSoon.map((i) => row(i))}</ul>
-        </Card>
-      )}
+      <ItemSection items={d.expiringSoon} title={<Title icon={<Clock className="size-4 text-warn" />} text="Use soon" count={d.expiringSoon.length} />}
+        render={(i, m) => row(i, undefined, m)} />
 
-      {d.longInFreezer.length > 0 && (
-        <Card title={<Title icon={<Archive className="size-4 text-frost" />} text="Been in the freezer a while" count={d.longInFreezer.length} />}>
-          <ul className="divide-y divide-border">
-            {d.longInFreezer.map((x) => row(x.item, (
-              <Chip tone={x.daysFrozen >= x.freezerDays ? "warn" : "frost"} className="shrink-0">{duration(x.daysFrozen)} / {duration(x.freezerDays)}</Chip>
-            )))}
-          </ul>
-        </Card>
-      )}
+      <ItemSection items={d.longInFreezer.map((x) => ({ ...x.item, frozen: x }))}
+        title={<Title icon={<Archive className="size-4 text-frost" />} text="Been in the freezer a while" count={d.longInFreezer.length} />}
+        render={(i, m) => row(i, (
+          <Chip tone={i.frozen.daysFrozen >= i.frozen.freezerDays ? "warn" : "frost"} className="shrink-0">{duration(i.frozen.daysFrozen)} / {duration(i.frozen.freezerDays)}</Chip>
+        ), m)} />
 
       {d.lowStock.length > 0 && (
         <Card title={<Title icon={<ShoppingBasket className="size-4 text-accent" />} text="Running low" count={d.lowStock.length} />}
@@ -132,6 +116,29 @@ function WasteLine() {
       </span>
       <ChevronRight className="size-4 shrink-0 text-muted" />
     </Link>
+  );
+}
+
+/**
+ * A dashboard card of items that animates as things are dealt with: rows fold away (frozen, used up), and the
+ * card itself folds away once it's empty.
+ */
+function ItemSection<T extends Item>({ items, title, intro, render }: {
+  items: T[]; title: ReactNode; intro?: ReactNode; render: (item: T, motion: { leaving: boolean; entering: boolean }) => ReactNode;
+}) {
+  const rows = useExitingList(items, (i) => i.id);
+  const { mounted, leaving } = usePresence(items.length > 0, 280);
+  // Keep the title (with its count) as it was while the card folds away.
+  const lastTitle = useRef(title);
+  if (items.length) lastTitle.current = title;
+  if (!mounted) return null;
+  return (
+    <MotionItem leaving={leaving}>
+      <Card title={lastTitle.current}>
+        {intro}
+        <ul>{rows.map(({ item, leaving, entering }) => render(item, { leaving, entering }))}</ul>
+      </Card>
+    </MotionItem>
   );
 }
 

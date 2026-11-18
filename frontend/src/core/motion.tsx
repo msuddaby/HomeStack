@@ -184,3 +184,29 @@ export function useStableOrder<T>(items: T[], key: (t: T) => Key): T[] {
   }
   return [...items].sort((a, b) => r.get(key(a))! - r.get(key(b))!);
 }
+
+/** Gives its content a little pop whenever `value` changes (not when it first appears), e.g. a quantity going down. */
+export function Bump({ value, children, className }: { value: unknown; children: ReactNode; className?: string }) {
+  const [n, setN] = useState(0);
+  const prev = useRef(value);
+  useEffect(() => {
+    if (Object.is(prev.current, value)) return;
+    prev.current = value;
+    setN((x) => x + 1);
+  }, [value]);
+  return <span key={n} className={["inline-block", n > 0 && "animate-pop", className].filter(Boolean).join(" ")}>{children}</span>;
+}
+
+/**
+ * For paged content (cooking steps, weeks): the slide-in class for the current page, based on whether `page`
+ * went up or down. Key the content on `page` and put this class on it.
+ */
+export function useSlideClass(page: number | string): string | undefined {
+  const prev = useRef(page);
+  const cls = useRef<string | undefined>(undefined);
+  if (prev.current !== page) {
+    cls.current = page > prev.current ? "animate-slide-next" : "animate-slide-prev";
+    prev.current = page;
+  }
+  return cls.current;
+}

@@ -29,7 +29,7 @@ export function RecipesPage() {
         <div className="-mx-4 mb-3 flex gap-1.5 overflow-x-auto px-4 pb-1">
           {tags.map((t) => (
             <button key={t} onClick={() => setTag(tag === t ? "" : t)}
-              className={cx("shrink-0 rounded-full border px-3 py-1 text-xs", tag === t ? "border-accent bg-accent-soft text-accent" : "border-border text-muted")}>
+              className={cx("press shrink-0 rounded-full border px-3 py-1 text-xs transition-colors duration-200", tag === t ? "border-accent bg-accent-soft text-accent" : "border-border text-muted")}>
               {t}
             </button>
           ))}
@@ -37,7 +37,8 @@ export function RecipesPage() {
       )}
 
       {recipes.isPending ? <Spinner /> : recipes.data?.length ? (
-        <div className="grid gap-2 sm:grid-cols-2">{recipes.data.map((r) => <RecipeCard key={r.id} r={r} />)}</div>
+        // Re-shown with a quick fade when you pick a tag (not on every keystroke of a search).
+        <div key={tag} className="grid animate-fade-in gap-2 sm:grid-cols-2">{recipes.data.map((r) => <RecipeCard key={r.id} r={r} />)}</div>
       ) : (
         <Empty icon={<BookOpen className="size-10" />} title={q || tag ? "No matching recipes" : "No recipes yet"}>
           {!q && !tag && (
