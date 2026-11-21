@@ -1,4 +1,5 @@
 import { useEffect, useRef, type ButtonHTMLAttributes, type ComponentProps, type PointerEvent, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { X, Loader2 } from "lucide-react";
 import { haptic, reducedMotion, usePresence } from "./motion";
 
@@ -243,7 +244,9 @@ export function Sheet({ open, onClose, title, children, footer }: { open: boolea
     panel.current.style.transform = "";
   };
 
-  return (
+  // Portalled to <body>: inside a page that's animating in (fade-in, rise…) the sheet would share that element's
+  // stacking context and sit under the phone tab bar, hiding its footer buttons.
+  return createPortal(
     <div className={cx("fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-6", leaving && "pointer-events-none")}
       onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div aria-hidden className={cx("absolute inset-0 bg-black/40", leaving ? "animate-fade-out" : "animate-fade-in")}
@@ -261,7 +264,8 @@ export function Sheet({ open, onClose, title, children, footer }: { open: boolea
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4">{shown.children}</div>
         {shown.footer && <div className="pb-safe border-t border-border px-4 py-3">{shown.footer}</div>}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

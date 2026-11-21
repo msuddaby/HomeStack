@@ -7,7 +7,7 @@ import { parseISO, todayISO } from "@/core/dates";
 import { useToast } from "@/core/toast";
 import { Button, Chip, cx, ErrorText, Field, Input, PhotoButton, Select, Sheet, Spinner } from "@/core/ui";
 import { useCategories, useLocations, type AddItem, type Category, type Location, type Product } from "@/modules/inventory/api";
-import { suggestExpiry } from "@/modules/inventory/logic";
+import { guessCategory, suggestExpiry } from "@/modules/inventory/logic";
 import { readReceipt, useAddReceiptPhotos, useAttachDocument, useExpenseCategories, usePeople, useSaveReceipt, type DraftLine, type ItemRef, type PackSource, type Person, type ReceiptDraft } from "./api";
 import { money } from "./format";
 import { noSplit, PeopleChips, SplitEditor, toParts, type SplitValue } from "./Split";
@@ -31,6 +31,9 @@ interface Row {
   /** Who this line is split between, when not the receipt's split (snacks for two, a shirt for one). Null: the receipt's. */
   split: number[] | null;
 }
+
+/** Spending categories that are food and drink, so the line can be put away in inventory. */
+const FOOD_SPENDING = new Set(["groceries", "snacks", "alcohol"]);
 
 const num = (s: string) => { const n = Number(s.replace(/[$,\s]/g, "")); return s.trim() !== "" && Number.isFinite(n) ? n : null; };
 const round3 = (n: number) => String(Math.round(n * 1000) / 1000);
@@ -137,6 +140,19 @@ export function ScanReceiptSheet({ open, onClose, onBack }: { open: boolean; onC
     const q = num(quantity);
     const food = r.food && !r.food.qtyTouched && q != null && q > 0 ? { ...r.food, qty: round3(q * r.food.perOne) } : r.food;
     return { ...r, quantity, food };
+  }));
+  // The reader said "not food" but it is (or the other way round): moving a line into Groceries offers to put it away,
+  // and moving it out drops the put-away it was only given for that.
+  const changeCategory = (key: number, category: string) => setRows((rs) => rs.map((r) => {
+    if (r.key !== key) return r;
+    if (!FOOD_SPENDING.has(category)) return { ...r, category, food: r.source.food ? r.food : null };
+    if (r.food) return { ...r, category };
+    const foodCat = foodCatById.get(guessCategory(r.name) ?? "other") ?? foodCats[0];
+    const q = num(r.quantity) ?? r.source.quantity;
+    const base = { category: foodCat?.id ?? "other", locationId: locFor(foodCat?.defaultLocation ?? "pantry")?.id ?? 0, product: null };
+    const food: FoodRow = { add: true, name: r.name, expiresAt: expiryFor(base, date || todayISO()), expiryTouched: false, ...base,
+      qty: round3(q), unit: r.unit, qtyTouched: false, perOne: 1, from: "receipt", already: null };
+    return { ...r, category, food };
   }));
   const updateFood = (key: number, patch: Partial<FoodRow>) => setRows((rs) => rs.map((r) => {
     if (r.key !== key || !r.food) return r;
@@ -255,7 +271,7 @@ export function ScanReceiptSheet({ open, onClose, onBack }: { open: boolean; onC
             {rows.map((r) => (
               <LineRow key={r.key} r={r} expenseCats={expenseCats} foodCats={foodCats} locations={locations}
                 people={people} receiptSplit={split.people}
-                update={(p) => update(r.key, p)} updateFood={(p) => updateFood(r.key, p)} updateQuantity={(q) => updateQuantity(r.key, q)} />
+                update={(p) => update(r.key, p)} changeCategory={(c) => changeCategory(r.key, c)} updateFood={(p) => updateFood(r.key, p)} updateQuantity={(q) => updateQuantity(r.key, q)} />
             ))}
           </ul>
           <p className="text-xs text-muted">Check names, prices and places. AI can misread receipts. Untick a line to leave it out.</p>
@@ -314,10 +330,10 @@ export function ScanReceiptSheet({ open, onClose, onBack }: { open: boolean; onC
   );
 }
 
-function LineRow({ r, expenseCats, foodCats, locations, people, receiptSplit, update, updateFood, updateQuantity }: {
+function LineRow({ r, expenseCats, foodCats, locations, people, receiptSplit, update, changeCategory, updateFood, updateQuantity }: {
   r: Row; expenseCats: { id: string; label: string; emoji: string }[]; foodCats: Category[]; locations: Location[];
   people: Person[]; receiptSplit: number[];
-  update: (p: Partial<Row>) => void; updateFood: (p: Partial<FoodRow>) => void; updateQuantity: (q: string) => void;
+  update: (p: Partial<Row>) => void; changeCategory: (category: string) => void; updateFood: (p: Partial<FoodRow>) => void; updateQuantity: (q: string) => void;
 }) {
   const s = r.source;
   const lineQty = num(r.quantity) ?? s.quantity;
@@ -344,7 +360,7 @@ function LineRow({ r, expenseCats, foodCats, locations, people, receiptSplit, up
       {r.include && (
         <>
           <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs text-muted">
-            <Select value={r.category} onChange={(e) => update({ category: e.target.value })} className="min-h-8 w-auto py-0 text-xs" aria-label="Spending category">
+            <Select value={r.category} onChange={(e) => changeCategory(e.target.value)} className="min-h-8 w-auto py-0 text-xs" aria-label="Spending category">
               {expenseCats.map((c) => <option key={c.id} value={c.id}>{c.emoji} {c.label}</option>)}
             </Select>
             <span className="flex items-center gap-1">
